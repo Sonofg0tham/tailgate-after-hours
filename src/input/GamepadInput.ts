@@ -36,6 +36,8 @@ export function resolveGamepadIntent(stickX: number, stickZ: number): MovementIn
     directionX: stickX / magnitude,
     directionZ: stickZ / magnitude,
     speed,
+    // No dedicated crouch button in the proven pad scheme — see InputState.ts.
+    crouched: speed === 'creep',
     device: 'gamepad',
   };
 }

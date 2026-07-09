@@ -1,0 +1,259 @@
+{
+  "cellSize": 1,
+  "width": 41,
+  "height": 24,
+  "legend": {
+    "#": {
+      "kind": "wall"
+    },
+    ".": {
+      "kind": "floor",
+      "zone": "corridor"
+    },
+    "r": {
+      "kind": "floor",
+      "zone": "reception"
+    },
+    "o": {
+      "kind": "floor",
+      "zone": "office"
+    },
+    "k": {
+      "kind": "floor",
+      "zone": "kitchen"
+    },
+    "p": {
+      "kind": "floor",
+      "zone": "print-room"
+    },
+    "s": {
+      "kind": "floor",
+      "zone": "server-room"
+    },
+    "c": {
+      "kind": "floor",
+      "zone": "corner-office"
+    },
+    "m": {
+      "kind": "floor",
+      "zone": "maintenance"
+    },
+    "w": {
+      "kind": "floor",
+      "zone": "ledge"
+    },
+    "+": {
+      "kind": "door",
+      "zone": "corridor"
+    },
+    "d": {
+      "kind": "furniture",
+      "zone": "office",
+      "furnitureType": "desk"
+    },
+    "R": {
+      "kind": "furniture",
+      "zone": "server-room",
+      "furnitureType": "rack"
+    },
+    "K": {
+      "kind": "furniture",
+      "zone": "kitchen",
+      "furnitureType": "counter"
+    },
+    "P": {
+      "kind": "furniture",
+      "zone": "print-room",
+      "furnitureType": "printer"
+    },
+    "B": {
+      "kind": "furniture",
+      "zone": "maintenance",
+      "furnitureType": "breaker"
+    },
+    "E": {
+      "kind": "furniture",
+      "zone": "corner-office",
+      "furnitureType": "desk-exec"
+    }
+  },
+  "zones": {
+    "corridor": {
+      "label": "Corridor",
+      "surface": "concrete",
+      "tint": "#4A4F58"
+    },
+    "reception": {
+      "label": "Reception & lift lobby",
+      "surface": "tile",
+      "tint": "#5A6272"
+    },
+    "office": {
+      "label": "Open-plan office",
+      "surface": "carpet",
+      "tint": "#3A4550"
+    },
+    "kitchen": {
+      "label": "Kitchen",
+      "surface": "tile",
+      "tint": "#5A6272"
+    },
+    "print-room": {
+      "label": "Print room",
+      "surface": "tile",
+      "tint": "#5A6272"
+    },
+    "server-room": {
+      "label": "Server room",
+      "surface": "concrete",
+      "tint": "#4A4F58"
+    },
+    "corner-office": {
+      "label": "Corner office",
+      "surface": "carpet",
+      "tint": "#3A4550"
+    },
+    "maintenance": {
+      "label": "Maintenance corridor",
+      "surface": "concrete",
+      "tint": "#4A4F58"
+    },
+    "ledge": {
+      "label": "Window-washing ledge",
+      "surface": "concrete",
+      "tint": "#2A2F38"
+    }
+  },
+  "layout": [
+    "#########################################",
+    "##oooooooooooooo#kkkkkk#ppppp#sssssss####",
+    "##oooooooooooooo#kKKKkk#ppppp#sRRRsss#ww#",
+    "##oodododoodoooo#kkkkkk#ppPpp#sssssss+ww#",
+    "##oooooooooooooo#kkkkkk#ppppp#sssssss#ww#",
+    "##oodododoodoooo#kkkkkk#ppppp#sssssss####",
+    "##oooooooooooooo#kkkkkk#ppppp#sRRRsss####",
+    "##oooooooooooooo#kkkkkk#ppppp#sssssss####",
+    "########+##########+######+######+#######",
+    "#.......................................#",
+    "#.......................................#",
+    "######+########+############+############",
+    "##rrrrrrrrrrr#mmm#ccccccccccccccccccccc##",
+    "##rrrrrrrrrrr#mmm#ccccccccccccccccccccc##",
+    "##rrrrrrrrrrr#mmm#ccccccccccccccccccccc##",
+    "##rrrrrrrrrrr#mmm#ccccccccccccccccccccc##",
+    "##rrrrrrrrrrr#mmm#ccccccccccccccccccccc##",
+    "##rrrrrrrrrrr#mmm#cccccccccEccccccccccc##",
+    "##rrrrrrrrrrr#mmm#ccccccccccccccccccccc##",
+    "##rrrrrrrrrrr#mmm#ccccccccccccccccccccc##",
+    "##############mmm########################",
+    "##############mBm########################",
+    "##############mmm########################",
+    "#########################################"
+  ],
+  "furniture": [
+    {
+      "x": 4,
+      "y": 3,
+      "type": "desk"
+    },
+    {
+      "x": 6,
+      "y": 3,
+      "type": "desk"
+    },
+    {
+      "x": 8,
+      "y": 3,
+      "type": "desk"
+    },
+    {
+      "x": 4,
+      "y": 5,
+      "type": "desk"
+    },
+    {
+      "x": 6,
+      "y": 5,
+      "type": "desk"
+    },
+    {
+      "x": 8,
+      "y": 5,
+      "type": "desk"
+    },
+    {
+      "x": 11,
+      "y": 3,
+      "type": "desk"
+    },
+    {
+      "x": 11,
+      "y": 5,
+      "type": "desk"
+    },
+    {
+      "x": 31,
+      "y": 2,
+      "type": "rack"
+    },
+    {
+      "x": 32,
+      "y": 2,
+      "type": "rack"
+    },
+    {
+      "x": 33,
+      "y": 2,
+      "type": "rack"
+    },
+    {
+      "x": 31,
+      "y": 6,
+      "type": "rack"
+    },
+    {
+      "x": 32,
+      "y": 6,
+      "type": "rack"
+    },
+    {
+      "x": 33,
+      "y": 6,
+      "type": "rack"
+    },
+    {
+      "x": 18,
+      "y": 2,
+      "type": "counter"
+    },
+    {
+      "x": 19,
+      "y": 2,
+      "type": "counter"
+    },
+    {
+      "x": 20,
+      "y": 2,
+      "type": "counter"
+    },
+    {
+      "x": 26,
+      "y": 3,
+      "type": "printer"
+    },
+    {
+      "x": 15,
+      "y": 21,
+      "type": "breaker"
+    },
+    {
+      "x": 27,
+      "y": 17,
+      "type": "desk-exec"
+    }
+  ],
+  "playerStart": {
+    "x": 6,
+    "y": 15
+  }
+}

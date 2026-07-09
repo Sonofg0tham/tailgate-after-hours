@@ -5,41 +5,38 @@ Treat this file as an SBOM for assets. An asset with no entry here is a bug.
 
 Format: `filename | source URL | author | licence`
 
-## Character model and animation (Phase -1, the spike)
+## Character model and animation
 
-All three files below are from **KayKit - Character Pack: Adventurers** by Kay
-Lousberg, downloaded directly from itch.io (free tier, no login required).
-Licence verified from the pack's own `License.txt`: Creative Commons Zero v1.0
-Universal (CC0), "free to use in personal, educational and commercial
-projects", attribution not required. Rig is Kay Lousberg's shared "Rig_Medium"
-humanoid skeleton, used unmodified across the character mesh and both
-animation-library files, so no cross-skeleton retargeting was needed for this
-phase.
+All four files below share Kay Lousberg's "Rig_Medium" humanoid skeleton
+unmodified, so every clip binds directly onto the character mesh with no
+cross-skeleton retargeting, and Mixamo was never used (see "Why this pack,
+and why not Mixamo" below).
 
 - public/models/rogue_hooded.glb | https://kaylousberg.itch.io/kaykit-adventurers | Kay Lousberg | CC0 1.0
-  (character mesh + skeleton, "Rogue_Hooded" from the pack, standing in for the operator)
+  (character mesh + skeleton, "Rogue_Hooded" from **KayKit - Character Pack: Adventurers**, standing in for the operator)
 - public/models/rig_medium_general.glb | https://kaylousberg.itch.io/kaykit-adventurers | Kay Lousberg | CC0 1.0
-  (animation library; the `Idle_A` clip is used)
+  (from **KayKit - Character Pack: Adventurers**; the `Idle_A` clip is used)
 - public/models/rig_medium_movementbasic.glb | https://kaylousberg.itch.io/kaykit-adventurers | Kay Lousberg | CC0 1.0
-  (animation library; the `Walking_A` and `Running_A` clips are used)
+  (from **KayKit - Character Pack: Adventurers**; the `Walking_A` and `Running_A` clips are used)
+- public/models/rig_medium_movementadvanced.glb | https://kaylousberg.itch.io/kaykit-character-animations | Kay Lousberg | CC0 1.0
+  (from **KayKit - Character Animations**, added Phase 1; the `Crouching` and `Sneaking` clips are used for crouch-idle and crouch-walk, replacing the spike's slowed-walk placeholder)
+
+Both packs' licences were verified the same way: downloaded directly from
+itch.io's free tier (no login required — click through "no thanks, just take
+me to the downloads"), then read verbatim from the pack's own `License.txt`:
+Creative Commons Zero v1.0 Universal (CC0), "free to use in personal,
+educational and commercial projects", attribution not required.
 
 ### Why this pack, and why not Mixamo
 
-GAME_DESIGN.md's Phase -1 wording says "retarget and blend three Mixamo
-clips". Craig redirected this before work started: try a CC0 pack that
-already ships its own animations on a shared skeleton first, since that needs
-no Adobe login and carries no retargeting risk. KayKit's Adventurers pack
-covers idle/walk/run out of the box on its `Rig_Medium` skeleton, so Mixamo
-was never used.
-
-For later phases needing crouch: the separate, also-CC0, also-login-free
-**KayKit - Character Animations** pack
-(https://kaylousberg.itch.io/kaykit-character-animations) was downloaded and
-inspected (not committed here, as Phase -1 doesn't use it) to confirm
-coverage. Its `Rig_Medium_MovementAdvanced.glb` file, on the same
-`Rig_Medium` skeleton, includes `Crouching` and `Sneaking` clips — so
-crouch-idle and crouch-walk are covered too when Phase 1 needs them, still
-without Mixamo.
+GAME_DESIGN.md's original Phase -1 wording said "retarget and blend three
+Mixamo clips". Craig redirected this before that work started: try a CC0
+pack that already ships its own animations on a shared skeleton first, since
+that needs no Adobe login and carries no retargeting risk. KayKit's
+Adventurers pack covered idle/walk/run out of the box, and the separate
+Character Animations pack (same skeleton, same publisher, same licence)
+covers crouch-idle and crouch-walk too — so Mixamo was never used, in Phase
+-1 or here.
 
 ## Fonts
 

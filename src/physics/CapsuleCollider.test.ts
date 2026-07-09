@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { resolveCollision } from './CapsuleCollider';
-import type { WallBounds } from '../world/Room';
+import { resolveCollision, type WallBounds } from './CapsuleCollider';
 
 const wall: WallBounds = { minX: -1, maxX: 1, minZ: -6, maxZ: -5.7 };
 

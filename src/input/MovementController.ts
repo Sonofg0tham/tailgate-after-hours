@@ -26,7 +26,7 @@ export class MovementController {
       return intent;
     }
 
-    return { directionX: 0, directionZ: 0, speed: 'idle', device: this.lastDevice };
+    return { directionX: 0, directionZ: 0, speed: 'idle', crouched: false, device: this.lastDevice };
   }
 
   /** World-space speed in metres/second for a given speed state. */

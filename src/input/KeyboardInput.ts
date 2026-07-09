@@ -21,35 +21,47 @@ export class KeyboardState {
 }
 
 /**
- * Turns the current keyboard state into a movement intent. Default pace is
+ * Turns "is this key code down" into a movement intent. Pulled out as a pure
+ * function (no KeyboardState/DOM involved) so it can be unit tested directly,
+ * the same shape as GamepadInput's resolveGamepadIntent. Default pace is
  * walk; hold Shift to creep, hold C to run.
  */
+export function resolveKeyboardIntent(isDown: (code: string) => boolean): MovementIntent | null {
+  const upHeld = isDown('KeyW') || isDown('ArrowUp');
+  const downHeld = isDown('KeyS') || isDown('ArrowDown');
+  const leftHeld = isDown('KeyA') || isDown('ArrowLeft');
+  const rightHeld = isDown('KeyD') || isDown('ArrowRight');
+
+  const x = (rightHeld ? 1 : 0) - (leftHeld ? 1 : 0);
+  // Forward (up/W) moves toward -Z in Three.js's default right-handed world.
+  const z = (downHeld ? 1 : 0) - (upHeld ? 1 : 0);
+
+  const crouched = isDown('ShiftLeft') || isDown('ShiftRight');
+
+  if (x === 0 && z === 0) {
+    // Nothing directional held. Still worth a real intent if Shift alone is
+    // down, so a stationary crouch reads as crouch-idle rather than idle —
+    // otherwise return null so the caller's idle fallback (or the gamepad)
+    // takes over.
+    return crouched ? { directionX: 0, directionZ: 0, speed: 'idle', crouched: true, device: 'keyboard' } : null;
+  }
+
+  // Normalise so diagonals are not roughly 40 percent faster than a straight line.
+  const magnitude = Math.hypot(x, z);
+
+  // C (run) wins if both speed keys are held, otherwise Shift creeps.
+  let speed: SpeedState = 'walk';
+  if (isDown('KeyC')) {
+    speed = 'run';
+  } else if (crouched) {
+    speed = 'creep';
+  }
+
+  return { directionX: x / magnitude, directionZ: z / magnitude, speed, crouched: speed === 'creep', device: 'keyboard' };
+}
+
 export const KeyboardInput = {
   read(keys: KeyboardState): MovementIntent | null {
-    const upHeld = keys.isDown('KeyW') || keys.isDown('ArrowUp');
-    const downHeld = keys.isDown('KeyS') || keys.isDown('ArrowDown');
-    const leftHeld = keys.isDown('KeyA') || keys.isDown('ArrowLeft');
-    const rightHeld = keys.isDown('KeyD') || keys.isDown('ArrowRight');
-
-    const x = (rightHeld ? 1 : 0) - (leftHeld ? 1 : 0);
-    // Forward (up/W) moves toward -Z in Three.js's default right-handed world.
-    const z = (downHeld ? 1 : 0) - (upHeld ? 1 : 0);
-
-    if (x === 0 && z === 0) {
-      return null;
-    }
-
-    // Normalise so diagonals are not roughly 40 percent faster than a straight line.
-    const magnitude = Math.hypot(x, z);
-
-    // C (run) wins if both speed keys are held, otherwise Shift creeps.
-    let speed: SpeedState = 'walk';
-    if (keys.isDown('KeyC')) {
-      speed = 'run';
-    } else if (keys.isDown('ShiftLeft') || keys.isDown('ShiftRight')) {
-      speed = 'creep';
-    }
-
-    return { directionX: x / magnitude, directionZ: z / magnitude, speed, device: 'keyboard' };
+    return resolveKeyboardIntent((code) => keys.isDown(code));
   },
 };
