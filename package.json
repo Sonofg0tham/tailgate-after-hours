@@ -13,6 +13,8 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@fontsource/ibm-plex-mono": "^5.2.7",
+    "@fontsource/saira-condensed": "^5.2.8",
     "three": "^0.182.0"
   },
   "devDependencies": {

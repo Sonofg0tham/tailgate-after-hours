@@ -5,10 +5,13 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Tailgate: After Hours — spike</title>
     <style>
+      /* Colours are written onto :root at startup by applyPaletteToCss()
+         (src/config/palette.ts) — this file only ever references the
+         resulting --base/--text custom properties, never a hardcoded hex. */
       html, body {
         margin: 0;
         height: 100%;
-        background: #0e1116;
+        background: var(--base, #0e1116);
         overflow: hidden;
       }
       #app {
@@ -22,8 +25,8 @@
         position: fixed;
         top: 8px;
         left: 8px;
-        color: #c7ccd4;
-        font-family: monospace;
+        color: var(--text, #c7cdd4);
+        font-family: 'IBM Plex Mono', monospace;
         font-size: 13px;
         line-height: 1.5;
         white-space: pre;
