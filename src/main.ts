@@ -175,6 +175,7 @@ async function main(): Promise<void> {
   let detainedFlashRemainingMs = 0;
   let animationPhaseMs = 0;
   let prevDoorId: string | null = null;
+  let drivenIntent: MovementIntent | null = null;
 
   const movement = new MovementController();
   const fps = new FpsMeter();
@@ -255,6 +256,18 @@ async function main(): Promise<void> {
       nextStaff[index] = { ...nextStaff[index], x, z };
       huntState = { ...huntState, staff: nextStaff };
     },
+    // __forceIntent above freezes movement to idle by design (a static pose
+    // for a screenshot at an exact teleported spot) — it deliberately does
+    // NOT drive stepHunt's physics. __driveIntent does: it takes priority
+    // over both that and the live device poll, for verifying real collision
+    // (a closed dynamic door actually blocking movement) without a keyboard
+    // or gamepad attached in this test environment.
+    __driveIntent: (partial: Partial<MovementIntent>) => {
+      drivenIntent = { directionX: 0, directionZ: 0, speed: 'walk', crouched: false, device: 'keyboard', ...partial };
+    },
+    __clearDrivenIntent: () => {
+      drivenIntent = null;
+    },
     __throwBolt: (targetX: number, targetZ: number) => {
       huntState = {
         ...huntState,
@@ -305,6 +318,8 @@ async function main(): Promise<void> {
     let throwAction: { x: number; z: number } | null = null;
     if (intentFrozen) {
       intent = { directionX: 0, directionZ: 0, speed: 'idle', crouched: false, device: lastIntent.device };
+    } else if (drivenIntent) {
+      intent = drivenIntent;
     } else if (replayQueue && replayQueue.length > 0) {
       const entry = replayQueue.shift()!;
       intent = entry.intent;
@@ -387,10 +402,7 @@ async function main(): Promise<void> {
   // is what caused the hang this is fixing, not just a missed optimisation.
   let warmedUp = false;
 
-  function frame(): void {
-    // Clamp delta so a dropped frame (tab backgrounded, GC pause) never
-    // fires a burst of catch-up sim ticks in one go.
-    const frameDelta = Math.min(clock.getDelta(), 1 / 20);
+  function renderOnce(frameDelta: number): void {
     animationPhaseMs += frameDelta * 1000;
     fixedLoop.advance(frameDelta);
 
@@ -491,10 +503,25 @@ async function main(): Promise<void> {
     }
 
     renderer.render(scene, followCamera.camera);
+  }
+
+  function frame(): void {
+    // Clamp delta so a dropped frame (tab backgrounded, GC pause) never
+    // fires a burst of catch-up sim ticks in one go.
+    renderOnce(Math.min(clock.getDelta(), 1 / 20));
     requestAnimationFrame(frame);
   }
 
   requestAnimationFrame(frame);
+
+  // Verification hook: manually drives one render+sim frame without relying
+  // on requestAnimationFrame, which this test environment's browser
+  // automation throttles to near-zero on a backgrounded/unfocused tab (see
+  // the Phase 2 PR notes) — lets a screenshot/hook-based verification pass
+  // advance the game deterministically regardless.
+  Object.assign(window, {
+    __forceFrame: (deltaSeconds = FIXED_STEP_SECONDS) => renderOnce(deltaSeconds),
+  });
 }
 
 main().catch((error) => {
