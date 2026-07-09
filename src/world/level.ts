@@ -44,6 +44,26 @@ export interface FurniturePlacement {
   type: string;
 }
 
+/**
+ * A door singled out for Phase 3 behaviour beyond the static open/closed the
+ * legend already gives every door cell. `kind` picks which schedule/access
+ * system in src/config/doors.ts drives it at runtime:
+ *   - 'badge'   — the lobby tailgate: opens for a staff badge, stays open for
+ *                 the tailgate window, a second person through counts as a
+ *                 witnessed tailgate.
+ *   - 'smokers' — the fire-stairs door: propped open on a repeating schedule
+ *                 (the cleaners' smoke breaks), otherwise closed.
+ *   - 'lift'    — the goods lift: open on a repeating schedule, otherwise
+ *                 closed, no badge or staff involvement.
+ * Doors NOT listed here keep Phase 1/2's plain static open/closed behaviour.
+ */
+export interface DoorKindDef {
+  x: number;
+  y: number;
+  id: string;
+  kind: 'badge' | 'smokers' | 'lift';
+}
+
 /** The raw shape of src/data/floor12.json. */
 export interface LevelData {
   cellSize: number;
@@ -54,6 +74,7 @@ export interface LevelData {
   layout: string[];
   furniture: FurniturePlacement[];
   lights: LightSource[];
+  doors: DoorKindDef[];
   playerStart: { x: number; y: number };
 }
 
@@ -74,6 +95,7 @@ export interface ParsedLevel {
   cells: ParsedCell[][];
   furniture: FurniturePlacement[];
   lights: LightSource[];
+  doors: DoorKindDef[];
   playerStart: { x: number; y: number };
   zones: Record<string, ZoneDef>;
 }
@@ -122,6 +144,13 @@ export function parseLevel(data: LevelData): ParsedLevel {
     }
   }
 
+  for (const d of data.doors) {
+    const cell = cells[d.y]?.[d.x];
+    if (!cell || cell.kind !== 'door') {
+      throw new Error(`Door entry ${JSON.stringify(d)} doesn't sit on a door cell at (${d.x}, ${d.y})`);
+    }
+  }
+
   return {
     cellSize: data.cellSize,
     width: data.width,
@@ -129,6 +158,7 @@ export function parseLevel(data: LevelData): ParsedLevel {
     cells,
     furniture: data.furniture,
     lights: data.lights,
+    doors: data.doors,
     playerStart: data.playerStart,
     zones: data.zones,
   };

@@ -24,6 +24,7 @@ const LEVEL_DATA: LevelData = {
   ),
   furniture: [],
   lights: [{ x: 10, y: 10, radius: 20, intensity: 1 }], // fully lit everywhere
+  doors: [],
   playerStart: { x: 2, y: 2 },
 };
 

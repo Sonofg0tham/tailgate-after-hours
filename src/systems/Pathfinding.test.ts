@@ -16,6 +16,7 @@ function levelFromLayout(layout: string[]): ReturnType<typeof parseLevel> {
     layout,
     furniture: [],
     lights: [],
+    doors: [],
     playerStart: { x: 1, y: 1 },
   } as LevelData);
 }

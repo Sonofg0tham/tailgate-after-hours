@@ -41,6 +41,7 @@ describe('buildLightGrid / lightLevelAtWorld', () => {
     layout: ['....', '....', '....', '....'],
     furniture: [],
     lights: [{ x: 1, y: 1, radius: 3, intensity: 1 }],
+    doors: [],
     playerStart: { x: 0, y: 0 },
   } as LevelData);
 
