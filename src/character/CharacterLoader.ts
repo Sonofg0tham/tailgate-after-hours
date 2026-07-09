@@ -1,11 +1,13 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
-/** The clips the spike blends between. Names match KayKit's Rig_Medium library exactly. */
+/** The five clips the game blends between. Names match KayKit's Rig_Medium library exactly. */
 export interface CharacterClips {
   idle: THREE.AnimationClip;
   walk: THREE.AnimationClip;
   run: THREE.AnimationClip;
+  crouchIdle: THREE.AnimationClip;
+  crouchWalk: THREE.AnimationClip;
 }
 
 export interface LoadedCharacter {
@@ -30,17 +32,18 @@ function findClip(clips: THREE.AnimationClip[], name: string): THREE.AnimationCl
 }
 
 /**
- * Loads the CC0 body plus the two KayKit animation-library files it shares a
- * skeleton with, and pulls out the three named clips the spike blends
- * between. Because all three files use the same "Rig_Medium" bone names, the
+ * Loads the CC0 body plus the three KayKit animation-library files it shares
+ * a skeleton with, and pulls out the five named clips the game blends
+ * between. Because all four files use the same "Rig_Medium" bone names, the
  * clips bind straight onto the body's skeleton with no retargeting step —
  * see CREDITS.md for why this sidesteps Mixamo entirely.
  */
 export async function loadCharacter(): Promise<LoadedCharacter> {
-  const [body, general, movementBasic] = await Promise.all([
+  const [body, general, movementBasic, movementAdvanced] = await Promise.all([
     loadGltf('/models/rogue_hooded.glb'),
     loadGltf('/models/rig_medium_general.glb'),
     loadGltf('/models/rig_medium_movementbasic.glb'),
+    loadGltf('/models/rig_medium_movementadvanced.glb'),
   ]);
 
   return {
@@ -49,6 +52,8 @@ export async function loadCharacter(): Promise<LoadedCharacter> {
       idle: findClip(general.animations, 'Idle_A'),
       walk: findClip(movementBasic.animations, 'Walking_A'),
       run: findClip(movementBasic.animations, 'Running_A'),
+      crouchIdle: findClip(movementAdvanced.animations, 'Crouching'),
+      crouchWalk: findClip(movementAdvanced.animations, 'Sneaking'),
     },
   };
 }

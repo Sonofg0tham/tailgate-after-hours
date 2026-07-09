@@ -1,11 +1,16 @@
-import type { WallBounds } from '../world/Room';
-
 /**
  * Plain capsule-vs-wall collision, no physics engine, per CLAUDE.md. The
  * player never moves vertically in v1, so the capsule collapses to a circle
- * on the XZ ground plane pushed out of each wall's axis-aligned box — cheap,
- * deterministic, and easy to reason about for one greybox room.
+ * on the XZ ground plane pushed out of each solid cell's axis-aligned box —
+ * cheap, deterministic, and easy to reason about for a grid-extruded level.
  */
+export interface WallBounds {
+  minX: number;
+  maxX: number;
+  minZ: number;
+  maxZ: number;
+}
+
 export interface CirclePosition {
   x: number;
   z: number;

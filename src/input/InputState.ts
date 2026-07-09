@@ -15,5 +15,14 @@ export interface MovementIntent {
   directionX: number;
   directionZ: number;
   speed: SpeedState;
+  /**
+   * Whether the crouch modifier is held, independent of whether the player is
+   * moving — this is what lets a stationary player be crouch-idle rather than
+   * plain idle. `creep` speed always implies this is true, by construction.
+   * Gamepad never sets this: the proven pad scheme derives creep purely from
+   * stick magnitude, with no separate crouch button, so it has no way to
+   * express "crouched but not moving."
+   */
+  crouched: boolean;
   device: InputDevice;
 }

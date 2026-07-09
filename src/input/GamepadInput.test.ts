@@ -9,7 +9,13 @@ describe('resolveGamepadIntent', () => {
   it('creeps at low stick magnitude', () => {
     const intent = resolveGamepadIntent(0.3, 0);
     expect(intent?.speed).toBe('creep');
+    expect(intent?.crouched).toBe(true);
     expect(intent?.device).toBe('gamepad');
+  });
+
+  it('is never crouched above creep threshold — no dedicated crouch button', () => {
+    const intent = resolveGamepadIntent(0.6, 0);
+    expect(intent?.crouched).toBe(false);
   });
 
   it('walks at medium stick magnitude', () => {
