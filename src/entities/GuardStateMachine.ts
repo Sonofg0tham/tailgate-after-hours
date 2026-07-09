@@ -7,7 +7,7 @@ import { lightLevelAtWorld } from '../systems/LightModel';
 import { findPath, type GridPoint } from '../systems/Pathfinding';
 import { stepFacing } from '../character/FacingController';
 import { resolveCollision, type WallBounds } from '../physics/CapsuleCollider';
-import type { ParsedLevel } from '../world/level';
+import type { DoorOpenLookup, ParsedLevel } from '../world/level';
 import type { MovementIntent } from '../input/InputState';
 import type { PlayerState } from '../sim/PlayerState';
 import type { GuardState, GuardStateName, PatrolWaypoint } from './GuardState';
@@ -56,6 +56,17 @@ export interface StepGuardContext {
   alertLevel: 0 | 1 | 2;
   dtSeconds: number;
   dtMs: number;
+  /** Current open/closed state of the dynamic badge/smokers/lift doors — see src/world/level.ts's DoorOpenLookup. */
+  doorOverrides?: DoorOpenLookup;
+  /**
+   * A heard noise (a thrown bolt landing, or the player's own footsteps)
+   * this guard should investigate this tick, or null. Set by the caller
+   * (stepHunt) — see src/systems/Noise.ts for the footstep radius and
+   * src/config/throw.ts for the bolt's landing noise radius. Tailgate-
+   * witnessing is handled separately, inside stepGuard itself, since it
+   * only needs this guard's own `canSee` result.
+   */
+  investigateOverride: { x: number; z: number } | null;
 }
 
 export type GuardEvent =
@@ -80,9 +91,10 @@ export function stepGuard(guard: GuardState, ctx: StepGuardContext): { guard: Gu
     ctx.player.z,
     DETECTION.vision.rangeCells,
     DETECTION.vision.fovDegrees,
+    ctx.doorOverrides,
   );
   const playerLightLevel = lightLevelAtWorld(ctx.lightGrid, ctx.level.cellSize, ctx.player.x, ctx.player.z);
-  const newSuspicion = stepSuspicion(
+  let newSuspicion = stepSuspicion(
     guard.suspicion,
     { seen: canSee, distanceCells: distanceMetres, speed: ctx.playerIntent.speed, lightLevel: playerLightLevel },
     ctx.dtSeconds,
@@ -94,8 +106,40 @@ export function stepGuard(guard: GuardState, ctx: StepGuardContext): { guard: Gu
     events.push({ type: 'detain', guardId: guard.id });
   }
 
-  const result = dispatch(guard, ctx, newSuspicion, sight);
+  // A heard noise (bolt/footsteps, from the caller) or a witnessed tailgate
+  // (this guard's own canSee, checked here) both pull the guard to
+  // investigate — ported from Tailgate's Guard.investigatePoint(): floor
+  // suspicion to curiousThreshold+5 and retarget, unless already ALERT (a
+  // guard mid-chase shouldn't get distracted by a distant noise).
+  const tailgateWitnessedAt = canSee && isTailgateWitnessed(ctx.level, ctx.doorOverrides, ctx.player.x, ctx.player.z)
+    ? { x: ctx.player.x, z: ctx.player.z }
+    : null;
+  const investigatePoint = ctx.investigateOverride ?? tailgateWitnessedAt;
+
+  let workingGuard = guard;
+  if (investigatePoint && guard.state !== 'alert') {
+    newSuspicion = Math.max(newSuspicion, DETECTION.suspicion.curiousThreshold + 5);
+    workingGuard = { ...guard, investigateX: investigatePoint.x, investigateZ: investigatePoint.z };
+  }
+
+  const result = dispatch(workingGuard, ctx, newSuspicion, sight);
   return { guard: result.guard, events: [...events, ...result.events] };
+}
+
+/** True if the player is standing in a badge door's cell AND that door currently reads open — the "witnessed tailgate" trigger. */
+function isTailgateWitnessed(
+  level: ParsedLevel,
+  doorOverrides: DoorOpenLookup | undefined,
+  playerX: number,
+  playerZ: number,
+): boolean {
+  if (!doorOverrides) {
+    return false;
+  }
+  const cellX = Math.floor(playerX);
+  const cellY = Math.floor(playerZ);
+  const def = level.doors.find((d) => d.kind === 'badge' && d.x === cellX && d.y === cellY);
+  return def !== undefined && doorOverrides.get(`${cellX},${cellY}`) === true;
 }
 
 function dispatch(
@@ -409,7 +453,12 @@ function followPath(guard: GuardState, ctx: StepGuardContext, targetWorldX: numb
 
   const targetMoved = pathTargetX !== targetGridX || pathTargetZ !== targetGridZ;
   if (!path || targetMoved || msSinceRepath >= GUARD.repathIntervalMs) {
-    const newPath = findPath(ctx.level, { x: Math.floor(guard.x), y: Math.floor(guard.z) }, { x: targetGridX, y: targetGridZ });
+    const newPath = findPath(
+      ctx.level,
+      { x: Math.floor(guard.x), y: Math.floor(guard.z) },
+      { x: targetGridX, y: targetGridZ },
+      ctx.doorOverrides,
+    );
     if (newPath && newPath.length > 0) {
       path = newPath;
       pathIndex = 0;

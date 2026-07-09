@@ -55,6 +55,9 @@ export function stepHunt(
       alertLevel: state.alertLevel.level,
       dtSeconds,
       dtMs,
+      // TODO(Phase 3): doors/staff/bolts wiring lands together — see stepHunt's
+      // upcoming doorOverrides/investigateOverride threading.
+      investigateOverride: null,
     };
     const result = stepGuard(guard, ctx);
     allEvents.push(...result.events);

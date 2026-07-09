@@ -52,6 +52,7 @@ function baseContext(overrides: Partial<StepGuardContext> = {}): StepGuardContex
     alertLevel: 0,
     dtSeconds: STEP_SECONDS,
     dtMs: STEP_MS,
+    investigateOverride: null,
     ...overrides,
   };
 }
@@ -185,6 +186,74 @@ describe('guardAnimationState / beamAppearanceFor — never colour alone', () =>
     expect(beamAppearanceFor('curious')).toBe('flicker');
     expect(beamAppearanceFor('searching')).toBe('flicker');
     expect(beamAppearanceFor('alert')).toBe('locked');
+  });
+});
+
+describe('investigate override — bolt/footstep noise', () => {
+  it('pulls a patrolling guard to curious and targets the noise point, even with no sight of the player', () => {
+    const guard = freshGuard();
+    const ctx = baseContext({
+      player: { x: 0.5, z: 0.5, facingYaw: 0 }, // player nowhere near the guard's cone
+      investigateOverride: { x: 12, z: 12 },
+    });
+    const { guard: after } = run(guard, ctx, 1);
+    expect(after.state).toBe('curious');
+    expect(after.investigateX).toBe(12);
+    expect(after.investigateZ).toBe(12);
+  });
+
+  it('does not distract a guard that is already ALERT', () => {
+    const guard: GuardState = { ...freshGuard(), state: 'alert', suspicion: 100, investigateX: 3, investigateZ: 3 };
+    const ctx = baseContext({
+      player: { x: 0.5, z: 0.5, facingYaw: 0 },
+      investigateOverride: { x: 12, z: 12 },
+    });
+    const { guard: after } = run(guard, ctx, 1);
+    expect(after.state).toBe('alert');
+    expect(after.investigateX).toBe(3);
+    expect(after.investigateZ).toBe(3);
+  });
+});
+
+describe('tailgate witness', () => {
+  const badgeDoorLevel = parseLevel({
+    ...LEVEL_DATA,
+    legend: { ...LEVEL_DATA.legend, '+': { kind: 'door', zone: 'room', open: true } },
+    layout: LEVEL_DATA.layout.map((row, y) => (y === 9 ? row.slice(0, 10) + '+' + row.slice(11) : row)),
+    doors: [{ x: 10, y: 9, id: 'test-lobby', kind: 'badge' }],
+  });
+
+  it('a guard who sees the player standing in an OPEN badge door goes curious', () => {
+    const guard = { ...freshGuard(), x: 10.5, z: 8.5, facingYaw: 0 }; // facing +Z, toward the door just ahead
+    const ctx = baseContext({
+      level: badgeDoorLevel,
+      player: { x: 10.5, z: 9.5, facingYaw: 0 }, // standing inside the door cell (10,9)
+      doorOverrides: new Map([['10,9', true]]),
+    });
+    const { guard: after } = run(guard, ctx, 1);
+    expect(after.state).toBe('curious');
+  });
+
+  it('is not witnessed while the door reads closed', () => {
+    const guard = { ...freshGuard(), x: 10.5, z: 8.5, facingYaw: 0 };
+    const ctx = baseContext({
+      level: badgeDoorLevel,
+      player: { x: 10.5, z: 9.5, facingYaw: 0 },
+      doorOverrides: new Map([['10,9', false]]),
+    });
+    const { guard: after } = run(guard, ctx, 1);
+    expect(after.state).toBe('patrol');
+  });
+
+  it('is not witnessed if the guard cannot see the player (facing away)', () => {
+    const guard = { ...freshGuard(), x: 10.5, z: 8.5, facingYaw: Math.PI }; // facing -Z, away from the door
+    const ctx = baseContext({
+      level: badgeDoorLevel,
+      player: { x: 10.5, z: 9.5, facingYaw: 0 },
+      doorOverrides: new Map([['10,9', true]]),
+    });
+    const { guard: after } = run(guard, ctx, 1);
+    expect(after.state).toBe('patrol');
   });
 });
 
