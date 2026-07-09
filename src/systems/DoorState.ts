@@ -1,6 +1,7 @@
 import { DOORS } from '../config/doors';
 import type { WallBounds } from '../physics/CapsuleCollider';
 import type { DoorKindDef, DoorOpenLookup, ParsedLevel } from '../world/level';
+import type { StaffRoute, StaffState } from '../entities/StaffState';
 
 export interface DoorRuntimeState {
   id: string;
@@ -102,4 +103,41 @@ export function closedDoorWallBounds(
     });
   }
   return bounds;
+}
+
+/**
+ * Any authorised staff member standing within `DOORS.staffBadgeDistanceMetres`
+ * of a badge door's cell refreshes its tailgate window — ported from
+ * Tailgate's per-frame proximity check in `BuildingScene.updateDoorsAndStaff`
+ * (`STAFF_BADGE_DISTANCE`). Non-badge doors and staff with no matching
+ * `badges` entry are untouched.
+ */
+export function applyStaffBadges(
+  level: ParsedLevel,
+  doorStates: readonly DoorRuntimeState[],
+  staffStates: readonly StaffState[],
+  staffDefs: readonly StaffRoute[],
+  nowMs: number,
+  lockdown: boolean,
+): DoorRuntimeState[] {
+  return doorStates.map((doorState) => {
+    if (doorState.kind !== 'badge') {
+      return doorState;
+    }
+    const def = level.doors.find((d) => d.id === doorState.id);
+    if (!def) {
+      return doorState;
+    }
+    const doorCenterX = def.x + 0.5;
+    const doorCenterZ = def.y + 0.5;
+    const nearby = staffStates.some((staff) => {
+      const staffDef = staffDefs.find((s) => s.id === staff.id);
+      if (!staffDef?.badges.includes(doorState.id)) {
+        return false;
+      }
+      const dist = Math.hypot(staff.x - doorCenterX, staff.z - doorCenterZ);
+      return dist <= DOORS.staffBadgeDistanceMetres;
+    });
+    return nearby ? badgeDoor(doorState, nowMs, lockdown) : doorState;
+  });
 }

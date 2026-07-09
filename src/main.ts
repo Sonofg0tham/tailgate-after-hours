@@ -6,16 +6,19 @@ import * as THREE from 'three';
 import '@fontsource/saira-condensed/600.css';
 import '@fontsource/ibm-plex-mono/400.css';
 
-import { parseLevel, surfaceAt, type LevelData } from './world/level';
+import { isWall, parseLevel, surfaceAt, type LevelData } from './world/level';
 import { extrudeLevel } from './world/Extruder';
-import { loadCharacter, loadGuardCharacter } from './character/CharacterLoader';
+import { loadCharacter, loadGuardCharacter, loadStaffCharacter } from './character/CharacterLoader';
 import { AnimationController } from './character/AnimationController';
 import { GuardAnimationController } from './character/GuardAnimationController';
+import { StaffAnimationController } from './character/StaffAnimationController';
 import { MovementController } from './input/MovementController';
+import { ThrowInput } from './input/ThrowInput';
 import { FollowCamera } from './camera/FollowCamera';
 import { FpsMeter } from './perf/FpsMeter';
 import { applyPaletteToCss, PALETTE_HEX } from './config/palette';
 import { DETECTION } from './config/detection';
+import { THROW } from './config/throw';
 import { FixedTimestepLoop } from './sim/FixedTimestepLoop';
 import { InputRecorder, type InputLogEntry } from './sim/InputLog';
 import { stepHunt, type HuntEnvironment, type HuntState } from './sim/stepHunt';
@@ -26,13 +29,20 @@ import { createDebugToggles } from './systems/DebugToggles';
 import { nightClockLabel } from './systems/NightClock';
 import { buildLightGrid, lightLevelAtWorld } from './systems/LightModel';
 import { buildLightGridMesh } from './systems/LightGridRenderer';
+import { resolveThrowAim } from './systems/ThrowAim';
+import { badgeDoor, createDoorState, isDoorOpen } from './systems/DoorState';
+import { staffAnimationState } from './systems/StaffMovement';
+import { createBolt } from './entities/BoltState';
 import { createGuardState, validateGuardRoutes, type GuardsData } from './entities/GuardState';
 import { beamAppearanceFor, guardAnimationState, type GuardEvent } from './entities/GuardStateMachine';
+import { createStaffState, validateStaffRoutes, type StaffData } from './entities/StaffState';
 import { TorchBeam } from './entities/TorchBeam';
 import { DebugVisionCone } from './entities/DebugVisionCone';
+import { DoorPanel } from './entities/DoorPanel';
 import { Telemetry } from './telemetry/Telemetry';
 import floor12 from './data/floor12.json';
 import guardsDataRaw from './data/guards.json';
+import staffDataRaw from './data/staff.json';
 
 const FIXED_STEP_SECONDS = 1 / 60;
 
@@ -79,15 +89,18 @@ async function main(): Promise<void> {
   const followCamera = new FollowCamera(window.innerWidth / window.innerHeight);
 
   const guardsData = guardsDataRaw as GuardsData;
+  const staffData = staffDataRaw as StaffData;
   const isWalkable = (x: number, y: number): boolean => {
     const cell = level.cells[y]?.[x];
     return cell !== undefined && (cell.kind === 'floor' || cell.kind === 'door');
   };
   validateGuardRoutes(guardsData, isWalkable);
+  validateStaffRoutes(staffData, isWalkable);
 
-  const [player, ...guardCharacters] = await Promise.all([
+  const [player, guardCharacters, staffCharacters] = await Promise.all([
     loadCharacter(),
-    ...guardsData.guards.map(() => loadGuardCharacter()),
+    Promise.all(guardsData.guards.map(() => loadGuardCharacter())),
+    Promise.all(staffData.staff.map(() => loadStaffCharacter())),
   ]);
   scene.add(player.model);
   const animation = new AnimationController(player.model, player.clips);
@@ -108,11 +121,34 @@ async function main(): Promise<void> {
     };
   });
 
+  const staffEntities = staffData.staff.map((routeDef, i) => {
+    const character = staffCharacters[i];
+    scene.add(character.model);
+    return { routeDef, model: character.model, animation: new StaffAnimationController(character.model, character.clips) };
+  });
+
+  const doorPanels = level.doors.map((def) => {
+    const opensEastWest = isWall(level, def.x, def.y - 1) && isWall(level, def.x, def.y + 1);
+    const panel = new DoorPanel(def, opensEastWest, level.cellSize);
+    scene.add(panel.mesh);
+    return { def, panel };
+  });
+
+  const boltMeshGeometry = new THREE.SphereGeometry(0.08, 8, 8);
+  const boltMeshMaterial = new THREE.MeshStandardMaterial({ color: 0xc7cdd4 });
+  const boltMeshes = new Map<number, THREE.Mesh>();
+
+  const boltLandingRing = new NoiseRingRenderer();
+  scene.add(boltLandingRing.mesh);
+  let boltLandingRingRemainingMs = 0;
+  const BOLT_LANDING_RING_MS = 1500;
+
   const huntEnv: HuntEnvironment = {
     level,
     lightGrid,
     wallBounds: extruded.wallBounds,
     routes: guardsData.guards.map((g) => g.route),
+    staffRoutes: staffData.staff,
   };
 
   function freshHuntState(): HuntState {
@@ -124,6 +160,10 @@ async function main(): Promise<void> {
       },
       guards: guardsData.guards.map(createGuardState),
       alertLevel: { level: 0, msSinceIncident: 0 },
+      simTimeMs: 0,
+      doors: level.doors.map(createDoorState),
+      staff: staffData.staff.map(createStaffState),
+      bolts: [],
     };
   }
 
@@ -196,6 +236,57 @@ async function main(): Promise<void> {
     __unfreezeIntent: () => {
       intentFrozen = false;
     },
+    // Phase 3 verification hooks: doors/schedules run on simTimeMs, so
+    // jumping it directly is how the three ingress windows and the tailgate
+    // window get proven without waiting real seconds through the browser's
+    // visibility-throttled requestAnimationFrame (see the Phase 2 PR notes).
+    __setSimTime: (ms: number) => {
+      huntState = { ...huntState, simTimeMs: ms };
+    },
+    __badgeDoor: (doorId: string) => {
+      huntState = {
+        ...huntState,
+        doors: huntState.doors.map((d) => (d.id === doorId ? badgeDoor(d, huntState.simTimeMs, false) : d)),
+      };
+    },
+    __teleportStaff: (index: number, x: number, z: number) => {
+      const nextStaff = huntState.staff.slice();
+      nextStaff[index] = { ...nextStaff[index], x, z };
+      huntState = { ...huntState, staff: nextStaff };
+    },
+    __throwBolt: (targetX: number, targetZ: number) => {
+      huntState = {
+        ...huntState,
+        bolts: [...huntState.bolts, createBolt(huntState.bolts.length, huntState.player.x, huntState.player.z, targetX, targetZ)],
+      };
+    },
+  });
+
+  // Aim tracking: mouse position raycast onto the ground plane, kept
+  // updated between ticks; right stick / R2 are polled fresh each tick
+  // (ThrowInput.ts). Mirrors Tailgate's ThrowController.computeAim exactly
+  // — see src/systems/ThrowAim.ts.
+  const raycaster = new THREE.Raycaster();
+  const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+  let pointerWorld = { x: huntState.player.x, z: huntState.player.z };
+  let mouseHeld = false;
+  let prevThrowHeld = false;
+
+  renderer.domElement.addEventListener('mousemove', (e) => {
+    const rect = renderer.domElement.getBoundingClientRect();
+    const ndcX = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+    const ndcY = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+    raycaster.setFromCamera(new THREE.Vector2(ndcX, ndcY), followCamera.camera);
+    const hit = new THREE.Vector3();
+    if (raycaster.ray.intersectPlane(groundPlane, hit)) {
+      pointerWorld = { x: hit.x, z: hit.z };
+    }
+  });
+  renderer.domElement.addEventListener('mousedown', (e) => {
+    if (e.button === 0) mouseHeld = true;
+  });
+  window.addEventListener('mouseup', (e) => {
+    if (e.button === 0) mouseHeld = false;
   });
 
   const fixedLoop = new FixedTimestepLoop(FIXED_STEP_SECONDS, (deltaSeconds) => {
@@ -210,20 +301,48 @@ async function main(): Promise<void> {
     }
 
     let intent: MovementIntent;
+    let throwAction: { x: number; z: number } | null = null;
     if (intentFrozen) {
       intent = { directionX: 0, directionZ: 0, speed: 'idle', crouched: false, device: lastIntent.device };
     } else if (replayQueue && replayQueue.length > 0) {
-      intent = replayQueue.shift()!.intent;
+      const entry = replayQueue.shift()!;
+      intent = entry.intent;
+      throwAction = entry.throwAction;
     } else {
       replayQueue = null;
       intent = movement.update();
-      recorder.record(tick++, intent);
+      const throwInput = ThrowInput.read();
+      const throwHeld = throwInput.held || mouseHeld;
+      if (throwHeld && !prevThrowHeld && huntState.bolts.length < THROW.boltCount) {
+        throwAction = resolveThrowAim(huntState.player.x, huntState.player.z, {
+          rightStick: throwInput.rightStick,
+          pointerWorld,
+        });
+      }
+      prevThrowHeld = throwHeld;
+      recorder.record(tick++, intent, throwAction);
     }
 
-    const result = stepHunt(huntState, intent, huntEnv, deltaSeconds, dtMs);
+    const boltsBefore = huntState.bolts;
+    const result = stepHunt(huntState, intent, throwAction, huntEnv, deltaSeconds, dtMs);
     huntState = result.state;
     if (!intentFrozen) {
       lastIntent = intent;
+    }
+
+    for (let i = 0; i < huntState.bolts.length; i++) {
+      const bolt = huntState.bolts[i];
+      if (bolt.landed && !boltsBefore[i]?.landed) {
+        boltLandingRing.update(bolt.x, bolt.z, THROW.noiseRadiusMetres);
+        boltLandingRing.setVisible(true);
+        boltLandingRingRemainingMs = BOLT_LANDING_RING_MS;
+      }
+    }
+    if (boltLandingRingRemainingMs > 0) {
+      boltLandingRingRemainingMs = Math.max(0, boltLandingRingRemainingMs - dtMs);
+      if (boltLandingRingRemainingMs === 0) {
+        boltLandingRing.setVisible(false);
+      }
     }
 
     const playerLight = lightLevelAtWorld(lightGrid, level.cellSize, huntState.player.x, huntState.player.z);
@@ -279,6 +398,40 @@ async function main(): Promise<void> {
       guard.debugCone.update(guardState.x, guardState.z, guardState.facingYaw, DETECTION.vision.rangeCells, DETECTION.vision.fovDegrees);
     }
 
+    for (let i = 0; i < staffEntities.length; i++) {
+      const staffState = huntState.staff[i];
+      const staff = staffEntities[i];
+      staff.model.position.set(staffState.x, 0, staffState.z);
+      staff.model.rotation.y = staffState.facingYaw;
+      staff.animation.setState(staffAnimationState(staffState));
+      staff.animation.update(frameDelta);
+    }
+
+    const lockdown = huntState.alertLevel.level >= 2;
+    for (const { def, panel } of doorPanels) {
+      const doorState = huntState.doors.find((d) => d.id === def.id);
+      panel.update(doorState !== undefined && isDoorOpen(doorState, huntState.simTimeMs, lockdown));
+    }
+
+    const activeBoltIds = new Set<number>();
+    for (const bolt of huntState.bolts) {
+      if (bolt.landed) continue; // spent bolts are just a marker in sim state, nothing to draw
+      activeBoltIds.add(bolt.id);
+      let mesh = boltMeshes.get(bolt.id);
+      if (!mesh) {
+        mesh = new THREE.Mesh(boltMeshGeometry, boltMeshMaterial);
+        scene.add(mesh);
+        boltMeshes.set(bolt.id, mesh);
+      }
+      mesh.position.set(bolt.x, 1, bolt.z);
+    }
+    for (const [id, mesh] of boltMeshes) {
+      if (!activeBoltIds.has(id)) {
+        scene.remove(mesh);
+        boltMeshes.delete(id);
+      }
+    }
+
     followCamera.follow(huntState.player.x, huntState.player.z, lastIntent.directionX, lastIntent.directionZ, frameDelta);
 
     const surface = surfaceAt(level, huntState.player.x, huntState.player.z);
@@ -300,6 +453,9 @@ async function main(): Promise<void> {
       `suspicion ${maxSuspicion.toFixed(0)}`,
       `alert level ${huntState.alertLevel.level}`,
       nightClockLabel(),
+      `sim ${(huntState.simTimeMs / 1000).toFixed(1)}s`,
+      `bolts ${huntState.bolts.length}/${THROW.boltCount}`,
+      ...huntState.doors.map((d) => `${d.id}: ${isDoorOpen(d, huntState.simTimeMs, lockdown) ? 'open' : 'shut'}`),
     ];
     if (debugState.guardDebug) {
       for (const guardState of huntState.guards) {

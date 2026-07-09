@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  applyStaffBadges,
   badgeDoor,
   closedDoorWallBounds,
   createDoorState,
@@ -7,6 +8,7 @@ import {
   isDoorOpen,
   type DoorRuntimeState,
 } from './DoorState';
+import { createStaffState } from '../entities/StaffState';
 import { parseLevel, type LevelData } from '../world/level';
 
 const LEVEL_DATA: LevelData = {
@@ -116,5 +118,31 @@ describe('doorOpenLookup / closedDoorWallBounds', () => {
     state = badgeDoor(state, 0, false);
     const bounds = closedDoorWallBounds(LEVEL, [state], 500, false);
     expect(bounds).toEqual([]);
+  });
+});
+
+describe('applyStaffBadges', () => {
+  const doorDef = { x: 2, y: 1, id: 'test-badge', kind: 'badge' as const };
+  const staffDef = { id: 'cleaner', badges: ['test-badge'], route: [{ x: 2, y: 1, pauseMs: 0 }] };
+
+  it('refreshes the tailgate window when an authorised staff member is within range', () => {
+    const doorState = createDoorState(doorDef);
+    const staff = createStaffState(staffDef); // spawns at (2.5, 1.5) — right on the door
+    const updated = applyStaffBadges(LEVEL, [doorState], [staff], [staffDef], 1000, false);
+    expect(isDoorOpen(updated[0], 1000, false)).toBe(true);
+  });
+
+  it('does not badge when the staff member carries no badge for this door', () => {
+    const doorState = createDoorState(doorDef);
+    const staff = createStaffState({ ...staffDef, badges: [] });
+    const updated = applyStaffBadges(LEVEL, [doorState], [staff], [{ ...staffDef, badges: [] }], 1000, false);
+    expect(isDoorOpen(updated[0], 1000, false)).toBe(false);
+  });
+
+  it('does not badge when the staff member is out of range', () => {
+    const doorState = createDoorState(doorDef);
+    const staff = { ...createStaffState(staffDef), x: 999, z: 999 };
+    const updated = applyStaffBadges(LEVEL, [doorState], [staff], [staffDef], 1000, false);
+    expect(isDoorOpen(updated[0], 1000, false)).toBe(false);
   });
 });
