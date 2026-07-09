@@ -8,6 +8,11 @@ export interface TelemetrySummary {
   timeInLightSeconds: number;
   chaseEscapes: number;
   detains: number;
+  ingressRoutesUsed: string[];
+  tailgatesAttempted: number;
+  tailgatesClean: number;
+  tailgatesSeen: number;
+  boltsThrown: number;
 }
 
 /**
@@ -40,6 +45,11 @@ export class Telemetry {
   private timeInLightSeconds = 0;
   private chaseEscapes = 0;
   private detains = 0;
+  private readonly ingressRoutesUsed = new Set<string>();
+  private tailgatesAttempted = 0;
+  private tailgatesClean = 0;
+  private tailgatesSeen = 0;
+  private boltsThrown = 0;
   private readonly log: string[] = [];
 
   recordTick(dtSeconds: number, playerLightLevel: number): void {
@@ -47,6 +57,32 @@ export class Telemetry {
     if (playerLightLevel > LIGHTING.ambientLevel + 0.01) {
       this.timeInLightSeconds += dtSeconds;
     }
+  }
+
+  /** Idempotent per route id — ported from Tailgate's runStats.recordIngress, safe to call every tick the player is standing in an open ingress door. */
+  recordIngressRoute(routeId: string): void {
+    if (this.ingressRoutesUsed.has(routeId)) {
+      return;
+    }
+    this.ingressRoutesUsed.add(routeId);
+    this.log.push(this.timestamp() + `INGRESS — ${routeId} route used`);
+  }
+
+  /** One crossing of the lobby badge door: clean if no guard's tailgateWitnessed event fired this tick, seen otherwise. */
+  recordTailgateAttempt(witnessed: boolean): void {
+    this.tailgatesAttempted++;
+    if (witnessed) {
+      this.tailgatesSeen++;
+      this.log.push(this.timestamp() + 'TAILGATE — attempted, seen by a guard');
+    } else {
+      this.tailgatesClean++;
+      this.log.push(this.timestamp() + 'TAILGATE — attempted, clean');
+    }
+  }
+
+  recordBoltThrown(): void {
+    this.boltsThrown++;
+    this.log.push(this.timestamp() + 'BOLT — thrown');
   }
 
   recordEvents(events: readonly GuardEvent[]): void {
@@ -79,6 +115,11 @@ export class Telemetry {
       timeInLightSeconds: this.timeInLightSeconds,
       chaseEscapes: this.chaseEscapes,
       detains: this.detains,
+      ingressRoutesUsed: [...this.ingressRoutesUsed],
+      tailgatesAttempted: this.tailgatesAttempted,
+      tailgatesClean: this.tailgatesClean,
+      tailgatesSeen: this.tailgatesSeen,
+      boltsThrown: this.boltsThrown,
     };
   }
 
@@ -95,6 +136,9 @@ export class Telemetry {
       `Chase escapes: ${s.chaseEscapes}`,
       `Detains: ${s.detains}`,
       `Time in light: ${s.timeInLightSeconds.toFixed(1)}s (${litPercent.toFixed(0)}%)`,
+      `Ingress routes used: ${s.ingressRoutesUsed.length > 0 ? s.ingressRoutesUsed.join(', ') : '(none)'}`,
+      `Tailgates: ${s.tailgatesAttempted} attempted (${s.tailgatesClean} clean, ${s.tailgatesSeen} seen)`,
+      `Bolts thrown: ${s.boltsThrown}`,
       '',
       '## Event log',
       ...(this.log.length > 0 ? this.log : ['(no events)']),

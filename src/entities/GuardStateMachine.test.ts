@@ -223,15 +223,16 @@ describe('tailgate witness', () => {
     doors: [{ x: 10, y: 9, id: 'test-lobby', kind: 'badge' }],
   });
 
-  it('a guard who sees the player standing in an OPEN badge door goes curious', () => {
+  it('a guard who sees the player standing in an OPEN badge door goes curious and emits tailgateWitnessed', () => {
     const guard = { ...freshGuard(), x: 10.5, z: 8.5, facingYaw: 0 }; // facing +Z, toward the door just ahead
     const ctx = baseContext({
       level: badgeDoorLevel,
       player: { x: 10.5, z: 9.5, facingYaw: 0 }, // standing inside the door cell (10,9)
       doorOverrides: new Map([['10,9', true]]),
     });
-    const { guard: after } = run(guard, ctx, 1);
+    const { guard: after, events } = run(guard, ctx, 1);
     expect(after.state).toBe('curious');
+    expect(events.some((e) => e.type === 'tailgateWitnessed')).toBe(true);
   });
 
   it('is not witnessed while the door reads closed', () => {

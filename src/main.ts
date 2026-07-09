@@ -174,6 +174,7 @@ async function main(): Promise<void> {
   let intentFrozen = false;
   let detainedFlashRemainingMs = 0;
   let animationPhaseMs = 0;
+  let prevDoorId: string | null = null;
 
   const movement = new MovementController();
   const fps = new FpsMeter();
@@ -330,6 +331,9 @@ async function main(): Promise<void> {
       lastIntent = intent;
     }
 
+    if (huntState.bolts.length > boltsBefore.length) {
+      telemetry.recordBoltThrown();
+    }
     for (let i = 0; i < huntState.bolts.length; i++) {
       const bolt = huntState.bolts[i];
       if (bolt.landed && !boltsBefore[i]?.landed) {
@@ -344,6 +348,23 @@ async function main(): Promise<void> {
         boltLandingRing.setVisible(false);
       }
     }
+
+    // Ingress/tailgate telemetry: fires once per crossing (entering an open
+    // dynamic door's cell from outside it), not once per tick spent inside.
+    const lockdownNow = huntState.alertLevel.level >= 2;
+    const currentDoor = level.doors.find(
+      (d) => d.x === Math.floor(huntState.player.x) && d.y === Math.floor(huntState.player.z),
+    );
+    const currentDoorState = currentDoor ? huntState.doors.find((d) => d.id === currentDoor.id) : undefined;
+    const currentDoorId =
+      currentDoor && currentDoorState && isDoorOpen(currentDoorState, huntState.simTimeMs, lockdownNow) ? currentDoor.id : null;
+    if (currentDoorId && currentDoorId !== prevDoorId) {
+      telemetry.recordIngressRoute(currentDoorId);
+      if (currentDoor?.kind === 'badge') {
+        telemetry.recordTailgateAttempt(result.events.some((e) => e.type === 'tailgateWitnessed'));
+      }
+    }
+    prevDoorId = currentDoorId;
 
     const playerLight = lightLevelAtWorld(lightGrid, level.cellSize, huntState.player.x, huntState.player.z);
     telemetry.recordTick(deltaSeconds, playerLight);

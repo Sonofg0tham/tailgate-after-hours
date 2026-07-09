@@ -45,4 +45,41 @@ describe('Telemetry', () => {
     expect(worksheet).toContain('Detections: 1');
     expect(worksheet).toContain('DETECTION');
   });
+
+  it('records each ingress route once, no matter how many times it is called', () => {
+    const t = new Telemetry();
+    t.recordIngressRoute('lobby');
+    t.recordIngressRoute('lobby');
+    t.recordIngressRoute('fire-stairs');
+    expect(t.summary().ingressRoutesUsed).toEqual(['lobby', 'fire-stairs']);
+  });
+
+  it('splits tailgate attempts into clean and seen', () => {
+    const t = new Telemetry();
+    t.recordTailgateAttempt(false);
+    t.recordTailgateAttempt(true);
+    t.recordTailgateAttempt(false);
+    const s = t.summary();
+    expect(s.tailgatesAttempted).toBe(3);
+    expect(s.tailgatesClean).toBe(2);
+    expect(s.tailgatesSeen).toBe(1);
+  });
+
+  it('counts bolts thrown', () => {
+    const t = new Telemetry();
+    t.recordBoltThrown();
+    t.recordBoltThrown();
+    expect(t.summary().boltsThrown).toBe(2);
+  });
+
+  it('includes the new Phase 3 fields in the worksheet', () => {
+    const t = new Telemetry();
+    t.recordIngressRoute('lift');
+    t.recordTailgateAttempt(true);
+    t.recordBoltThrown();
+    const worksheet = t.toWorksheet();
+    expect(worksheet).toContain('Ingress routes used: lift');
+    expect(worksheet).toContain('Tailgates: 1 attempted (0 clean, 1 seen)');
+    expect(worksheet).toContain('Bolts thrown: 1');
+  });
 });

@@ -72,7 +72,8 @@ export interface StepGuardContext {
 export type GuardEvent =
   | { type: 'stateChanged'; guardId: string; from: GuardStateName; to: GuardStateName }
   | { type: 'radioCall'; guardId: string }
-  | { type: 'detain'; guardId: string };
+  | { type: 'detain'; guardId: string }
+  | { type: 'tailgateWitnessed'; guardId: string };
 
 interface Sight {
   canSee: boolean;
@@ -114,6 +115,9 @@ export function stepGuard(guard: GuardState, ctx: StepGuardContext): { guard: Gu
   const tailgateWitnessedAt = canSee && isTailgateWitnessed(ctx.level, ctx.doorOverrides, ctx.player.x, ctx.player.z)
     ? { x: ctx.player.x, z: ctx.player.z }
     : null;
+  if (tailgateWitnessedAt) {
+    events.push({ type: 'tailgateWitnessed', guardId: guard.id });
+  }
   const investigatePoint = ctx.investigateOverride ?? tailgateWitnessedAt;
 
   let workingGuard = guard;
