@@ -19,4 +19,11 @@ export default tseslint.config(
       'no-console': ['warn', { allow: ['warn', 'error'] }],
     },
   },
+  {
+    // Standalone reporting scripts (npm run lit-vs-dark, etc.) are meant to print.
+    files: ['scripts/**/*.ts'],
+    rules: {
+      'no-console': 'off',
+    },
+  },
 );

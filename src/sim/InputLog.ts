@@ -1,6 +1,7 @@
 import type { MovementIntent } from '../input/InputState';
 import type { PlayerState } from './PlayerState';
 import { stepPlayer } from './step';
+import { stepHunt, type HuntEnvironment, type HuntState } from './stepHunt';
 import type { WallBounds } from '../physics/CapsuleCollider';
 
 export interface InputLogEntry {
@@ -10,10 +11,11 @@ export interface InputLogEntry {
 
 /**
  * A recorded run: a seed plus every tick's input. The seed is carried for
- * forward compatibility (Patch Tuesday's `rngState`-threading pattern) but
- * is inert in Phase 1 — nothing consumes randomness yet, since there's no
- * guard AI. It earns its keep from Phase 2 onward without changing this
- * format.
+ * forward compatibility (Patch Tuesday's `rngState`-threading pattern) and
+ * is still inert — guards have no randomness of their own either (see
+ * stepHunt.ts), they're a pure function of player position and dt. It's
+ * kept for whenever this project's first RNG consumer actually arrives,
+ * without needing to change this format then either.
  */
 export interface InputLog {
   seed: string;
@@ -50,6 +52,20 @@ export function replay(log: InputLog, walls: readonly WallBounds[]): PlayerState
   let state = log.startState;
   for (const entry of log.entries) {
     state = stepPlayer(state, entry.intent, log.stepSeconds, walls);
+  }
+  return state;
+}
+
+/**
+ * The Phase 2 equivalent of replay(): folds a log through stepHunt instead
+ * of stepPlayer, so it reproduces guard state too. Guards aren't part of
+ * InputLog itself (see the header above) — the caller supplies their
+ * starting state and the environment (level/lights/routes) fresh each time.
+ */
+export function replayHunt(log: InputLog, startState: HuntState, env: HuntEnvironment): HuntState {
+  let state = startState;
+  for (const entry of log.entries) {
+    state = stepHunt(state, entry.intent, env, log.stepSeconds, log.stepSeconds * 1000).state;
   }
   return state;
 }
