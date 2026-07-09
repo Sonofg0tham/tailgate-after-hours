@@ -1,0 +1,21 @@
+{
+  "staff": [
+    {
+      "id": "cleaner-lobby",
+      "badges": ["lobby"],
+      "route": [
+        { "x": 6, "y": 9, "pauseMs": 4000 },
+        { "x": 6, "y": 13, "pauseMs": 6000 }
+      ]
+    },
+    {
+      "id": "cleaner-corner",
+      "badges": [],
+      "route": [
+        { "x": 22, "y": 14, "pauseMs": 5000 },
+        { "x": 32, "y": 16, "pauseMs": 5000 },
+        { "x": 22, "y": 18, "pauseMs": 5000 }
+      ]
+    }
+  ]
+}

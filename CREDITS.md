@@ -13,7 +13,8 @@ cross-skeleton retargeting, and Mixamo was never used (see "Why this pack,
 and why not Mixamo" below).
 
 - public/models/rogue_hooded.glb | https://kaylousberg.itch.io/kaykit-adventurers | Kay Lousberg | CC0 1.0
-  (character mesh + skeleton, "Rogue_Hooded" from **KayKit - Character Pack: Adventurers**, standing in for the operator)
+  (character mesh + skeleton, "Rogue_Hooded" from **KayKit - Character Pack: Adventurers**, standing in for the operator;
+  reused as-is for the Phase 3 cleaners too — a placeholder, no distinct civilian body sourced yet)
 - public/models/rig_medium_general.glb | https://kaylousberg.itch.io/kaykit-adventurers | Kay Lousberg | CC0 1.0
   (from **KayKit - Character Pack: Adventurers**; the `Idle_A` clip is used)
 - public/models/rig_medium_movementbasic.glb | https://kaylousberg.itch.io/kaykit-adventurers | Kay Lousberg | CC0 1.0
