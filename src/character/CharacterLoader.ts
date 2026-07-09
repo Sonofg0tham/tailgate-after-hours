@@ -15,6 +15,18 @@ export interface LoadedCharacter {
   clips: CharacterClips;
 }
 
+/** The three clips a guard needs — no crouch, guards never creep. */
+export interface GuardClips {
+  idle: THREE.AnimationClip;
+  walk: THREE.AnimationClip;
+  run: THREE.AnimationClip;
+}
+
+export interface LoadedGuardCharacter {
+  model: THREE.Object3D;
+  clips: GuardClips;
+}
+
 const loader = new GLTFLoader();
 
 function loadGltf(url: string): Promise<{ scene: THREE.Group; animations: THREE.AnimationClip[] }> {
@@ -54,6 +66,30 @@ export async function loadCharacter(): Promise<LoadedCharacter> {
       run: findClip(movementBasic.animations, 'Running_A'),
       crouchIdle: findClip(movementAdvanced.animations, 'Crouching'),
       crouchWalk: findClip(movementAdvanced.animations, 'Sneaking'),
+    },
+  };
+}
+
+/**
+ * Loads a guard: a different KayKit Adventurers body (Knight — already
+ * covered by the same pack licence, see CREDITS.md) on the same Rig_Medium
+ * skeleton, sharing idle/walk/run with the player. "Look-around" isn't a
+ * clip — like Tailgate's original guard, it's the idle pose with facing
+ * driven procedurally by the state machine (see GuardStateMachine.ts).
+ */
+export async function loadGuardCharacter(): Promise<LoadedGuardCharacter> {
+  const [body, general, movementBasic] = await Promise.all([
+    loadGltf('/models/knight.glb'),
+    loadGltf('/models/rig_medium_general.glb'),
+    loadGltf('/models/rig_medium_movementbasic.glb'),
+  ]);
+
+  return {
+    model: body.scene,
+    clips: {
+      idle: findClip(general.animations, 'Idle_A'),
+      walk: findClip(movementBasic.animations, 'Walking_A'),
+      run: findClip(movementBasic.animations, 'Running_A'),
     },
   };
 }

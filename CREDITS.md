@@ -20,6 +20,8 @@ and why not Mixamo" below).
   (from **KayKit - Character Pack: Adventurers**; the `Walking_A` and `Running_A` clips are used)
 - public/models/rig_medium_movementadvanced.glb | https://kaylousberg.itch.io/kaykit-character-animations | Kay Lousberg | CC0 1.0
   (from **KayKit - Character Animations**, added Phase 1; the `Crouching` and `Sneaking` clips are used for crouch-idle and crouch-walk, replacing the spike's slowed-walk placeholder)
+- public/models/knight.glb | https://kaylousberg.itch.io/kaykit-adventurers | Kay Lousberg | CC0 1.0
+  (added Phase 2; "Knight" from the same already-verified **KayKit - Character Pack: Adventurers**, same Rig_Medium skeleton, used for both guards — no new download or licence check needed, same pack as the player body)
 
 Both packs' licences were verified the same way: downloaded directly from
 itch.io's free tier (no login required — click through "no thanks, just take

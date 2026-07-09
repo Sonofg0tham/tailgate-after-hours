@@ -14,6 +14,21 @@ export interface LegendEntry {
   zone?: string;
   /** Present for furniture cells only. */
   furnitureType?: string;
+  /**
+   * Present for door cells only. Closed doors block vision (guard cones and
+   * the player's own line-of-sight checks) but NOT movement — access control
+   * is Phase 3's badge-door work, this is a vision-occlusion concern only.
+   */
+  open?: boolean;
+}
+
+export interface LightSource {
+  x: number;
+  y: number;
+  /** Cells from the source at which its contribution reaches zero. */
+  radius: number;
+  /** 0-1, the light level directly at the source. */
+  intensity: number;
 }
 
 export interface ZoneDef {
@@ -38,6 +53,7 @@ export interface LevelData {
   zones: Record<string, ZoneDef>;
   layout: string[];
   furniture: FurniturePlacement[];
+  lights: LightSource[];
   playerStart: { x: number; y: number };
 }
 
@@ -46,6 +62,8 @@ export interface ParsedCell {
   zone: string | null;
   surface: SurfaceType | null;
   furnitureType: string | null;
+  /** Only meaningful when kind === 'door'. */
+  doorOpen: boolean | null;
 }
 
 export interface ParsedLevel {
@@ -55,6 +73,7 @@ export interface ParsedLevel {
   /** [y][x], row-major to match `layout`. */
   cells: ParsedCell[][];
   furniture: FurniturePlacement[];
+  lights: LightSource[];
   playerStart: { x: number; y: number };
   zones: Record<string, ZoneDef>;
 }
@@ -91,6 +110,7 @@ export function parseLevel(data: LevelData): ParsedLevel {
         zone: entry.zone ?? null,
         surface: zoneDef?.surface ?? null,
         furnitureType: entry.furnitureType ?? null,
+        doorOpen: entry.kind === 'door' ? (entry.open ?? true) : null,
       };
     });
   });
@@ -108,6 +128,7 @@ export function parseLevel(data: LevelData): ParsedLevel {
     height: data.height,
     cells,
     furniture: data.furniture,
+    lights: data.lights,
     playerStart: data.playerStart,
     zones: data.zones,
   };
@@ -135,6 +156,23 @@ export function isSolid(level: ParsedLevel, x: number, y: number): boolean {
   }
   const kind = level.cells[y][x].kind;
   return kind === 'wall' || kind === 'furniture';
+}
+
+/**
+ * True for any cell that blocks line-of-sight: walls, closed doors, and
+ * furniture (a desk or rack occludes just as much as a wall does). Movement
+ * solidity and sight-blocking are deliberately separate checks — an open
+ * door is walkable AND see-through; a closed one is walkable but opaque.
+ */
+export function blocksSight(level: ParsedLevel, x: number, y: number): boolean {
+  if (x < 0 || y < 0 || x >= level.width || y >= level.height) {
+    return true;
+  }
+  const cell = level.cells[y][x];
+  if (cell.kind === 'wall' || cell.kind === 'furniture') {
+    return true;
+  }
+  return cell.kind === 'door' && cell.doorOpen === false;
 }
 
 /**
