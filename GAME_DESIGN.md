@@ -20,7 +20,7 @@ Nothing about the design changes; everything about the FEELING changes. Presence
 
 ## The player in 3D
 
-- Character: low-poly operator (CC0 model, Mixamo-animated). Animation states: idle, walk, run, crouch-idle, crouch-walk, blended by AnimationMixer.
+- Character: low-poly operator (CC0 KayKit model and animation clips, sharing one skeleton, no retargeting). Animation states: idle, walk, run, crouch-idle, crouch-walk, blended by AnimationMixer.
 - The three-speed noise model returns EXACTLY as tuned in Tailgate, mapped to animation: creep IS crouch-walk (silent), walk is walk (small noise ring), run is run (large ring). The proven pad scheme carries over unchanged: left-stick magnitude drives speed, keyboard fallback is WASD with Shift creep and C run, nothing bound to Ctrl or Alt.
 - Collision: capsule versus extruded walls. No jumping, no climbing, no verticality in v1: the tower's other floors are set dressing seen through windows, the engagement is one floor. (Multi-floor is the v2 headline.)
 - Interact, tailgate, and throw return unchanged. Throw aims with the right stick or mouse, exactly the Tailgate mapping.
@@ -68,8 +68,9 @@ Unchanged from Tailgate: plant the device (hold, uninterrupted), two photo secon
 
 Each phase: one branch, one PR, CI green, deployed preview, proof shots in docs/phase-N/, Craig merges.
 
-**Phase -1, the spike.** Prove the two genuinely new pipelines while the stakes are a box room: load a CC0 humanoid GLB, retarget and blend three Mixamo clips (idle, walk, run) via AnimationMixer, drive it with the pad scheme, capsule collision against one extruded greybox room, fixed-tilt follow camera with easing, 60fps on the deployed URL. Committed to main as the initial commits, protection after.
-Done when: a stranger watching the live URL sees a little person convincingly walking around a room, and the PR records fps plus an honest note on anything GLTF/Mixamo did that was unexpected.
+**Phase -1, the spike.** Done. Proved the two genuinely new pipelines while the stakes were a box room: load a CC0 humanoid GLB, blend three animation clips (idle, walk, run) via AnimationMixer, drive it with the pad scheme, capsule collision against one extruded greybox room, fixed-tilt follow camera with easing, 60fps on the deployed URL. Committed to main as the initial commits, protection after.
+
+The finding that changed the plan: a CC0 pack (KayKit) already ships a character and its animation clips sharing one skeleton, so retargeting turned out not to be on the critical path at all, and Mixamo never entered the project. The "retarget Mixamo clips" framing above was the going-in assumption, not what happened — see CLAUDE.md and CREDITS.md for the actual pipeline. The same shared skeleton's Character Animations pack covers crouch-idle and crouch-walk, so Phase 1 doesn't need a new asset source either.
 
 **Phase 0, the skeleton.** Scaffold, ESLint, Vitest wired into CI (typecheck, lint, test, gitleaks, all blocking), fonts, inherited palette module, LICENSE, README stub, CREDITS.md recording fonts plus the model and clip licences verified in the spike, .gitignore.
 Done when: CI blocks a deliberately failing PR and passes a clean one.

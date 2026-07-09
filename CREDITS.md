@@ -43,6 +43,11 @@ without Mixamo.
 
 ## Fonts
 
-Not yet used. Phase 0 introduces the inherited Tailgate identity (Saira
-Condensed, IBM Plex Mono via Fontsource); an entry will land here in that
-commit.
+Both bundled as npm packages via Fontsource, both licensed under the SIL Open
+Font License 1.1. Vite emits the woff2 files into the build; nothing is
+fetched from a CDN at runtime.
+
+| Font | Use | Licence | Source |
+| --- | --- | --- | --- |
+| Saira Condensed | Display: menus, headings (inherited from Tailgate) | [SIL Open Font License 1.1](https://openfontlicense.org) | [Fontsource](https://fontsource.org/fonts/saira-condensed) |
+| IBM Plex Mono | Monospace: HUD readouts, the Engagement Report (inherited from Tailgate) | [SIL Open Font License 1.1](https://openfontlicense.org) | [Fontsource](https://fontsource.org/fonts/ibm-plex-mono), design by IBM |

@@ -1,4 +1,11 @@
 import * as THREE from 'three';
+
+// Bundled web fonts (OFL, recorded in CREDITS.md). Vite emits the woff2
+// files into the build, nothing is fetched from a CDN at runtime. Only the
+// weights actually used are imported.
+import '@fontsource/saira-condensed/600.css';
+import '@fontsource/ibm-plex-mono/400.css';
+
 import { Room } from './world/Room';
 import { loadCharacter } from './character/CharacterLoader';
 import { AnimationController } from './character/AnimationController';
@@ -6,10 +13,13 @@ import { MovementController } from './input/MovementController';
 import { resolveCollision } from './physics/CapsuleCollider';
 import { FollowCamera } from './camera/FollowCamera';
 import { FpsMeter } from './perf/FpsMeter';
+import { applyPaletteToCss, PALETTE_HEX } from './config/palette';
 
 const PLAYER_RADIUS = 0.35;
 
 async function main(): Promise<void> {
+  applyPaletteToCss();
+
   const appEl = document.getElementById('app');
   const hudElRaw = document.getElementById('hud');
   if (!appEl || !hudElRaw) {
@@ -20,7 +30,7 @@ async function main(): Promise<void> {
   const hudEl: HTMLElement = hudElRaw;
 
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x0e1116);
+  scene.background = new THREE.Color(PALETTE_HEX.base);
 
   const renderer = new THREE.WebGLRenderer({ antialias: true });
   renderer.setPixelRatio(window.devicePixelRatio);

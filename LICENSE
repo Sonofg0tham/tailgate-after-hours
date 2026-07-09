@@ -21,4 +21,6 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 The bundled character model and animation clips (KayKit, by Kay Lousberg) are
-licensed separately under CC0 1.0 Universal. See CREDITS.md.
+licensed separately under CC0 1.0 Universal. The bundled fonts (Saira
+Condensed and IBM Plex Mono) are licensed separately under the SIL Open Font
+License 1.1. See CREDITS.md.

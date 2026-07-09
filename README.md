@@ -12,14 +12,32 @@ games series, the 3D reimagining of
 
 Full design in [GAME_DESIGN.md](GAME_DESIGN.md).
 
-## Status
+Status: in development, Phase 0. Full design in [GAME_DESIGN.md](GAME_DESIGN.md).
 
-Phase -1, the spike: proving the GLTF/animation pipeline and the follow
-camera in one greybox room before real feature work starts.
+## Stack
 
-## Develop
+Three.js, TypeScript (strict) and Vite. No game engine, no physics library:
+character collision is a hand-written capsule against extruded walls. The
+floor plan stays 2D grid data, extruded to 3D at load — the same
+risk-reduction trick as Tailgate. It deploys to Vercel as a static build,
+with no backend, no accounts and no analytics; settings and best ratings
+live in localStorage.
 
-```
+## Development
+
+```bash
 npm install
-npm run dev
+npm run dev        # local dev server
+npm run build      # production build (typecheck + Vite)
+npm run typecheck  # TypeScript, no emit
+npm run lint       # ESLint
+npm test           # Vitest
 ```
+
+Every pull request must pass typecheck, lint, the test suite and a gitleaks
+secret scan in CI before it can merge to main.
+
+## Licence
+
+Code is [MIT](LICENSE). The bundled character model, animation clips, and
+fonts are recorded in [CREDITS.md](CREDITS.md).
