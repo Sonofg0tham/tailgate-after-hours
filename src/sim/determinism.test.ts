@@ -7,6 +7,7 @@ import { InputRecorder, replay, replayHunt, type InputLog } from './InputLog';
 import type { HuntEnvironment, HuntState } from './stepHunt';
 import { createGuardState, type GuardsData } from '../entities/GuardState';
 import { createStaffState, type StaffData } from '../entities/StaffState';
+import { createMissionState } from './MissionState';
 import type { MovementIntent } from '../input/InputState';
 import type { PlayerState } from './PlayerState';
 import floor12 from '../data/floor12.json';
@@ -50,7 +51,7 @@ describe('replay determinism (seed + input log)', () => {
     const log = scriptedRun();
     const divergent: InputLog = {
       ...log,
-      entries: [{ tick: 0, intent: intent(1, 0, 'run'), throwAction: null }, ...log.entries],
+      entries: [{ tick: 0, intent: intent(1, 0, 'run'), throwAction: null, interactHeld: false }, ...log.entries],
     };
     const baseline = replay(log, extruded.wallBounds);
     const divergedResult = replay(divergent, extruded.wallBounds);
@@ -75,6 +76,7 @@ describe('replay determinism with guards (Phase 2)', () => {
     lightGrid,
     wallBounds: extruded.wallBounds,
     routes: guardRoutes.map((g) => g.route),
+    guardRoutes,
     staffRoutes: (staffData as StaffData).staff,
   };
   const huntStart: HuntState = {
@@ -85,6 +87,7 @@ describe('replay determinism with guards (Phase 2)', () => {
     doors: level.doors.map(createDoorState),
     staff: (staffData as StaffData).staff.map(createStaffState),
     bolts: [],
+    mission: createMissionState(),
   };
 
   it('guards have no input of their own, yet replaying the same log reproduces them byte-identically', () => {
@@ -98,7 +101,7 @@ describe('replay determinism with guards (Phase 2)', () => {
     const log = scriptedRun();
     const divergent: InputLog = {
       ...log,
-      entries: [{ tick: 0, intent: intent(1, 0, 'run'), throwAction: null }, ...log.entries],
+      entries: [{ tick: 0, intent: intent(1, 0, 'run'), throwAction: null, interactHeld: false }, ...log.entries],
     };
     const baseline = replayHunt(log, huntStart, env);
     const diverged = replayHunt(divergent, huntStart, env);
@@ -122,6 +125,7 @@ describe('replay determinism with a door, a throw, and an ingress window (Phase 
     lightGrid,
     wallBounds: extruded.wallBounds,
     routes: guardRoutes.map((g) => g.route),
+    guardRoutes,
     staffRoutes: (staffData as StaffData).staff,
   };
 
@@ -138,6 +142,7 @@ describe('replay determinism with a door, a throw, and an ingress window (Phase 
       doors: level.doors.map(createDoorState),
       staff: (staffData as StaffData).staff.map(createStaffState),
       bolts: [],
+      mission: createMissionState(),
     };
   }
 

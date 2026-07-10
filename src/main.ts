@@ -13,7 +13,9 @@ import { AnimationController } from './character/AnimationController';
 import { GuardAnimationController } from './character/GuardAnimationController';
 import { StaffAnimationController } from './character/StaffAnimationController';
 import { MovementController } from './input/MovementController';
+import { KeyboardState } from './input/KeyboardInput';
 import { ThrowInput } from './input/ThrowInput';
+import { InteractInput } from './input/InteractInput';
 import { FollowCamera } from './camera/FollowCamera';
 import { FpsMeter } from './perf/FpsMeter';
 import { applyPaletteToCss, PALETTE_HEX } from './config/palette';
@@ -22,6 +24,7 @@ import { THROW } from './config/throw';
 import { FixedTimestepLoop } from './sim/FixedTimestepLoop';
 import { InputRecorder, type InputLogEntry } from './sim/InputLog';
 import { stepHunt, type HuntEnvironment, type HuntState } from './sim/stepHunt';
+import { createMissionState } from './sim/MissionState';
 import type { MovementIntent } from './input/InputState';
 import { noiseRadius } from './systems/Noise';
 import { NoiseRingRenderer } from './systems/NoiseRingRenderer';
@@ -148,6 +151,7 @@ async function main(): Promise<void> {
     lightGrid,
     wallBounds: extruded.wallBounds,
     routes: guardsData.guards.map((g) => g.route),
+    guardRoutes: guardsData.guards,
     staffRoutes: staffData.staff,
   };
 
@@ -164,6 +168,7 @@ async function main(): Promise<void> {
       doors: level.doors.map(createDoorState),
       staff: staffData.staff.map(createStaffState),
       bolts: [],
+      mission: createMissionState(),
     };
   }
 
@@ -176,8 +181,10 @@ async function main(): Promise<void> {
   let animationPhaseMs = 0;
   let prevDoorId: string | null = null;
   let drivenIntent: MovementIntent | null = null;
+  let drivenInteract: boolean | null = null;
 
   const movement = new MovementController();
+  const keyboard = new KeyboardState();
   const fps = new FpsMeter();
   const telemetry = new Telemetry();
   const clock = new THREE.Clock();
@@ -267,12 +274,21 @@ async function main(): Promise<void> {
     },
     __clearDrivenIntent: () => {
       drivenIntent = null;
+      drivenInteract = null;
     },
     __throwBolt: (targetX: number, targetZ: number) => {
       huntState = {
         ...huntState,
         bolts: [...huntState.bolts, createBolt(huntState.bolts.length, huntState.player.x, huntState.player.z, targetX, targetZ)],
       };
+    },
+    // Phase 4 verification hooks. __missionState reads the objective/checkpoint/
+    // exfil/dawn progress; __driveInteract holds (or releases) the interact
+    // control so a plant/photo hold can be driven deterministically alongside
+    // __driveIntent, without a keyboard attached in this throttled environment.
+    __missionState: () => huntState.mission,
+    __driveInteract: (held: boolean) => {
+      drivenInteract = held;
     },
   });
 
@@ -306,27 +322,38 @@ async function main(): Promise<void> {
   const fixedLoop = new FixedTimestepLoop(FIXED_STEP_SECONDS, (deltaSeconds) => {
     const dtMs = deltaSeconds * 1000;
 
+    // The detain flash is now purely cosmetic: the checkpoint restart already
+    // happened deterministically inside stepHunt (restartAtCheckpoint), so the
+    // sim just pauses briefly on the red frame, then resumes at the checkpoint.
     if (detainedFlashRemainingMs > 0) {
       detainedFlashRemainingMs = Math.max(0, detainedFlashRemainingMs - dtMs);
-      if (detainedFlashRemainingMs === 0) {
-        huntState = freshHuntState();
-      }
+      return;
+    }
+
+    // The mission is over (exfilled or caught by dawn): freeze the sim until
+    // [ NEW ENGAGEMENT ] starts a fresh run.
+    if (huntState.mission.phase !== 'infiltrating') {
       return;
     }
 
     let intent: MovementIntent;
     let throwAction: { x: number; z: number } | null = null;
+    let interactHeld: boolean;
     if (intentFrozen) {
       intent = { directionX: 0, directionZ: 0, speed: 'idle', crouched: false, device: lastIntent.device };
+      interactHeld = drivenInteract ?? false;
     } else if (drivenIntent) {
       intent = drivenIntent;
+      interactHeld = drivenInteract ?? false;
     } else if (replayQueue && replayQueue.length > 0) {
       const entry = replayQueue.shift()!;
       intent = entry.intent;
       throwAction = entry.throwAction;
+      interactHeld = entry.interactHeld;
     } else {
       replayQueue = null;
       intent = movement.update();
+      interactHeld = InteractInput.read(keyboard);
       const throwInput = ThrowInput.read();
       const throwHeld = throwInput.held || mouseHeld;
       if (throwHeld && !prevThrowHeld && huntState.bolts.length < THROW.boltCount) {
@@ -336,11 +363,11 @@ async function main(): Promise<void> {
         });
       }
       prevThrowHeld = throwHeld;
-      recorder.record(tick++, intent, throwAction);
+      recorder.record(tick++, intent, throwAction, interactHeld);
     }
 
     const boltsBefore = huntState.bolts;
-    const result = stepHunt(huntState, intent, throwAction, huntEnv, deltaSeconds, dtMs);
+    const result = stepHunt(huntState, intent, throwAction, interactHeld, huntEnv, deltaSeconds, dtMs);
     huntState = result.state;
     if (!intentFrozen) {
       lastIntent = intent;
@@ -485,7 +512,7 @@ async function main(): Promise<void> {
       `device ${lastIntent.device}`,
       `suspicion ${maxSuspicion.toFixed(0)}`,
       `alert level ${huntState.alertLevel.level}`,
-      nightClockLabel(),
+      nightClockLabel(huntState.simTimeMs),
       `sim ${(huntState.simTimeMs / 1000).toFixed(1)}s`,
       `bolts ${huntState.bolts.length}/${THROW.boltCount}`,
       ...huntState.doors.map((d) => `${d.id}: ${isDoorOpen(d, huntState.simTimeMs, lockdown) ? 'open' : 'shut'}`),
