@@ -28,7 +28,7 @@ export const RENDER_LIGHTING = {
   /** Ambient light for DYNAMIC objects only (characters, furniture, door panels) — floors/walls are grid-lit and ignore it. */
   ambient: {
     color: 0x67707f,
-    intensity: 0.24,
+    intensity: 0.5,
   },
 
   /**
@@ -46,10 +46,10 @@ export const RENDER_LIGHTING = {
   /** One small point light per placed source, shading characters/furniture near it. No shadows (static occlusion is the grid's job). */
   sourceLights: {
     color: 0xffe2b0,
-    intensity: 0.9,
+    intensity: 1.8,
     /** Light reach = source radius times this (kept tighter than the gameplay radius so pools read pooled). */
     distanceScale: 0.85,
-    heightMetres: 2.6,
+    heightMetres: 2.2,
   },
 
   /** The guard torch: a real SpotLight with shadows, married to the beam cone (the beam IS the cone). */
@@ -57,7 +57,7 @@ export const RENDER_LIGHTING = {
     color: 0xffe8c2,
     /** Alarm-state wash: red stays reserved for detection. */
     lockedColor: 0xff5a4d,
-    intensity: 14,
+    intensity: 22,
     /** Metres past the vision range the light itself carries (soft tail beyond the hard cone edge). */
     overreachMetres: 1,
     penumbra: 0.4,

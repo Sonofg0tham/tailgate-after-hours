@@ -43,6 +43,10 @@ export class TorchBeam {
       opacity: 0.35,
       side: THREE.DoubleSide,
       depthWrite: false,
+      // Additive: the beam GLOWS over the dark floor instead of muddying it
+      // — a cone of light, not a tinted decal. Found in visual QA: normal
+      // alpha over the night floor made the locked red wash near-invisible.
+      blending: THREE.AdditiveBlending,
     });
     this.geometry = new THREE.BufferGeometry();
     this.mesh = new THREE.Mesh(this.geometry, this.material);
