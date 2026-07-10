@@ -52,10 +52,10 @@ export interface ReportModel {
 
 const SEVERITY_ORDER: Record<Severity, number> = { CRITICAL: 0, HIGH: 1, MEDIUM: 2, LOW: 3 };
 
-const INGRESS_TEXT: Record<string, string> = {
-  'fire-stairs': 'Fire-stairs door propped open during the cleaning crew smoke break. Consultant entered unchallenged',
-  lift: 'Goods lift boarded on its published delivery schedule. Consultant reached the floor',
-  lobby: 'Tailgated a staff member through the lobby badge gate. Door dwell time (1.6s) permits unauthorised entry',
+const INGRESS_TEXT: Record<string, (time: string) => string> = {
+  'fire-stairs': (t) => `Fire-stairs door propped open during the cleaning crew smoke break. Consultant entered unchallenged at ${t}.`,
+  lift: (t) => `Goods lift boarded on its published delivery schedule. Consultant reached the floor at ${t}.`,
+  lobby: (t) => `Tailgated a staff member through the lobby badge gate at ${t}. Door dwell time (1.6s) permits unauthorised entry.`,
 };
 
 export function generateReport(mission: MissionState): ReportModel {
@@ -95,8 +95,10 @@ function buildFindings(mission: MissionState, dawn: boolean): Finding[] {
   const raw: Array<{ severity: Severity; text: string }> = [];
 
   if (mission.ingressRoute !== null) {
-    const base = INGRESS_TEXT[mission.ingressRoute] ?? `Unauthorised entry via ${mission.ingressRoute}`;
-    raw.push({ severity: 'HIGH', text: `${base} at ${stampClock(mission.ingressAtMs ?? 0)}.` });
+    const time = stampClock(mission.ingressAtMs ?? 0);
+    const route = mission.ingressRoute;
+    const text = INGRESS_TEXT[route]?.(time) ?? `Unauthorised entry via ${route} at ${time}.`;
+    raw.push({ severity: 'HIGH', text });
   }
 
   if (mission.plantedAtMs !== null) {

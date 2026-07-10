@@ -11,7 +11,8 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "test": "vitest run",
-    "lit-vs-dark": "vite-node scripts/lit-vs-dark.ts"
+    "lit-vs-dark": "vite-node scripts/lit-vs-dark.ts",
+    "sample-report": "vite-node scripts/sample-report.ts"
   },
   "dependencies": {
     "@fontsource/ibm-plex-mono": "^5.2.7",
