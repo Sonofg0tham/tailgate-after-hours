@@ -1,5 +1,5 @@
 import { MISSION } from '../config/mission';
-import { stampClock } from '../systems/NightClock';
+import { fictionalDurationLabel, stampClock } from '../systems/NightClock';
 import { decideRating, type Rating } from './rating';
 import type { MissionState } from '../sim/MissionState';
 
@@ -60,7 +60,12 @@ const INGRESS_TEXT: Record<string, (time: string) => string> = {
 
 export function generateReport(mission: MissionState): ReportModel {
   const dawn = mission.phase === 'dawn';
+  // The run ends at exfil, or at dawn if it timed out. Time on site is the
+  // FICTIONAL span from entering the building (ingress) to that end, on the
+  // same 01:00-05:00 clock as the finding timestamps — so a dawn run reads as
+  // ingress-to-05:00 (never the raw real playtime of the ~12-minute night).
   const endMs = mission.exfilledAtMs ?? MISSION.dawnDeadlineMs;
+  const onSiteFromMs = mission.ingressAtMs ?? 0;
   const { rating, remark } = decideRating(mission);
 
   const findings = buildFindings(mission, dawn);
@@ -81,7 +86,7 @@ export function generateReport(mission: MissionState): ReportModel {
     findings,
     clientDetections,
     summary: {
-      timeOnSite: formatDuration(endMs),
+      timeOnSite: fictionalDurationLabel(endMs - onSiteFromMs),
       alertReached: alertLabel(mission.maxAlertLevel),
       secondaries: `${photosDone} of ${MISSION.photos.length} photographed`,
     },
@@ -156,14 +161,6 @@ function alertLabel(level: 0 | 1 | 2): string {
   if (level >= 2) return 'LOCKDOWN';
   if (level >= 1) return 'CAUTIOUS';
   return 'CALM';
-}
-
-/** mm:ss for a millisecond duration. */
-function formatDuration(ms: number): string {
-  const totalSeconds = Math.floor(ms / 1000);
-  const minutes = Math.floor(totalSeconds / 60);
-  const seconds = totalSeconds % 60;
-  return `${pad2(minutes)}:${pad2(seconds)}`;
 }
 
 function pad2(n: number): string {

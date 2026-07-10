@@ -35,6 +35,25 @@ export function stampClock(elapsedMs: number): string {
   return clockLabel(elapsedMs);
 }
 
+/**
+ * A DURATION on the fictional clock (not a clock reading), formatted "HH:MM"
+ * — how much fictional night elapsed over a real span, clamped to the night's
+ * length. This is deliberately on the same 4-hour scale as stampClock, so the
+ * report's "time on site" agrees with its finding timestamps: a real span can
+ * never map to more than the whole 01:00-05:00 night (04:00). Passing a real
+ * duration equal to `dawnDeadlineMs` (the whole night) yields exactly 04:00,
+ * never the raw "12 minutes" of real playtime.
+ */
+export function fictionalDurationLabel(realMs: number): string {
+  const clamped = Math.max(0, Math.min(realMs, MISSION.dawnDeadlineMs));
+  // Floor, matching stampClock's convention, so a duration and the clock
+  // readings it spans stay consistent to the minute.
+  const fictionalMinutes = Math.floor((clamped / MISSION.dawnDeadlineMs) * MISSION.clock.spanFictionalMinutes);
+  const hours = Math.floor(fictionalMinutes / 60);
+  const minutes = fictionalMinutes % 60;
+  return `${pad2(hours)}:${pad2(minutes)}`;
+}
+
 function pad2(n: number): string {
   return n.toString().padStart(2, '0');
 }

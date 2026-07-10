@@ -1,5 +1,19 @@
 # Phase 4 verification notes
 
+## Post-merge fix: report "time on site"
+
+The Engagement Report's "time on site" was showing real playtime (mm:ss) while
+every finding used the fictional 01:00-05:00 clock, so a dawn run printed the
+raw ~12-minute night as "12:00" — impossible against a 4-hour night. Fixed at
+source: time on site is now a fictional-clock duration from ingress to end
+(`fictionalDurationLabel` in NightClock.ts), clamped to the night's length, so
+it can never exceed 04:00 and always agrees with the finding timestamps. This
+corrected all three sample values (GHOST and DETAINED shifted too — their old
+mm:ss values contradicted their own findings; e.g. DETAINED's findings put
+entry at 01:06 and the plant at 01:40, so its old "03:30" on-site was
+impossible). The GHOST end-screen block quoted below predates the fix; the
+authoritative post-fix samples are in [sample-report.txt](sample-report.txt).
+
 ## The honest bit first
 
 The browser-automation visibility throttle from Phases 2 and 3 recurred again,

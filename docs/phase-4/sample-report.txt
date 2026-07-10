@@ -20,7 +20,7 @@ CLIENT DETECTIONS
   - None. Client security did not detect the assessment.
 
 SUMMARY
-  Time on site:  00:51
+  Time on site:  00:15
   Alert reached: CALM
   Secondaries:   2 of 2 photographed
 ===================================================
@@ -47,7 +47,7 @@ CLIENT DETECTIONS
   - Full site lockdown initiated. Badge access suspended building-wide.
 
 SUMMARY
-  Time on site:  03:30
+  Time on site:  01:04
   Alert reached: LOCKDOWN
   Secondaries:   1 of 2 photographed
 ===================================================
@@ -73,7 +73,7 @@ CLIENT DETECTIONS
   - Site alert level raised to CAUTIOUS.
 
 SUMMARY
-  Time on site:  12:00
+  Time on site:  03:57
   Alert reached: CAUTIOUS
   Secondaries:   0 of 2 photographed
 ===================================================
