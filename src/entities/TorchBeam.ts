@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { raycastDistance } from '../systems/Vision';
+import { RENDER_LIGHTING } from '../config/renderLighting';
 import type { ParsedLevel } from '../world/level';
 
 const SEGMENTS = 16;
@@ -13,17 +14,27 @@ const BEAM_HEIGHT = 1.3; // roughly guard hand/torch height, metres above the fl
  * can see — clipped at the first wall or closed door along each sub-ray,
  * the same way Tailgate's original render-side fan worked.
  *
+ * Phase 5: the torch is also a real THREE.SpotLight with a shadow map,
+ * living inside this same object and driven by the same update — the
+ * one-object rule holds, the beam and the light can never disagree. The
+ * spotlight shades characters and furniture (floors/walls are grid-lit and
+ * ignore it) and its shadow map stops it reaching through walls.
+ *
  * State-driven appearance is the "never colour alone" telegraph:
  *   patrol/sweep — steady, amber.
- *   curious/searching — flickers (opacity pulses) — a beam swinging around.
- *   alert — locked, red wash, full opacity.
+ *   curious/searching — flickers (opacity and light intensity pulse) — a beam swinging around.
+ *   alert — locked, red wash, full opacity, hard light.
  */
 export type BeamAppearance = 'steady' | 'flicker' | 'locked';
 
 export class TorchBeam {
-  readonly mesh: THREE.Mesh;
+  /** Add this to the scene: fan mesh + spotlight + its target, one unit. */
+  readonly group: THREE.Group;
+  private readonly mesh: THREE.Mesh;
   private readonly material: THREE.MeshBasicMaterial;
   private readonly geometry: THREE.BufferGeometry;
+  private readonly light: THREE.SpotLight;
+  private readonly lightTarget: THREE.Object3D;
 
   constructor() {
     this.material = new THREE.MeshBasicMaterial({
@@ -36,6 +47,20 @@ export class TorchBeam {
     this.geometry = new THREE.BufferGeometry();
     this.mesh = new THREE.Mesh(this.geometry, this.material);
     this.mesh.renderOrder = 5;
+
+    const torch = RENDER_LIGHTING.torch;
+    this.light = new THREE.SpotLight(torch.color, torch.intensity);
+    this.light.penumbra = torch.penumbra;
+    this.light.decay = torch.decay;
+    this.light.castShadow = true;
+    this.light.shadow.mapSize.set(torch.shadowMapSize, torch.shadowMapSize);
+    this.light.shadow.bias = torch.shadowBias;
+    this.light.shadow.camera.near = 0.3;
+    this.lightTarget = new THREE.Object3D();
+    this.light.target = this.lightTarget;
+
+    this.group = new THREE.Group();
+    this.group.add(this.mesh, this.light, this.lightTarget);
   }
 
   update(
@@ -69,13 +94,26 @@ export class TorchBeam {
     this.geometry.computeVertexNormals();
     this.mesh.position.set(originX, 0, originZ);
 
+    // The spotlight rides the same origin and facing as the fan.
+    const torch = RENDER_LIGHTING.torch;
+    const dirX = Math.sin(facingYaw);
+    const dirZ = Math.cos(facingYaw);
+    this.light.position.set(originX, torch.heightMetres, originZ);
+    this.lightTarget.position.set(originX + dirX * rangeCells, 0.4, originZ + dirZ * rangeCells);
+    this.light.angle = halfFov;
+    this.light.distance = rangeCells + torch.overreachMetres;
+
     this.material.color.setHex(appearance === 'locked' ? 0xff3b30 : 0xffb000);
+    this.light.color.setHex(appearance === 'locked' ? torch.lockedColor : torch.color);
     if (appearance === 'flicker') {
       this.material.opacity = 0.22 + Math.sin(animationPhase) * 0.13;
+      this.light.intensity = torch.intensity * (1 - torch.flickerDepth * (0.5 + 0.5 * Math.sin(animationPhase)));
     } else if (appearance === 'locked') {
       this.material.opacity = 0.5;
+      this.light.intensity = torch.intensity * 1.25;
     } else {
       this.material.opacity = 0.35;
+      this.light.intensity = torch.intensity;
     }
   }
 }

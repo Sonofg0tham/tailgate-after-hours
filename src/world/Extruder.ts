@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { isWall, type ParsedLevel, type SurfaceType } from './level';
 import type { WallBounds } from '../physics/CapsuleCollider';
+import { gridBrightness } from '../config/renderLighting';
 
 import { buildFurniture } from './Furniture';
 
@@ -25,12 +26,56 @@ export interface ExtrudedLevel {
   setSurfaceTintDebug(enabled: boolean): void;
   /** Toggle a wireframe cell-grid overlay across the floor, for alignment checks. */
   setGridOverlay(enabled: boolean): void;
+  /**
+   * Reads the brightness actually written into the merged floor geometry's
+   * colour attribute for a cell — the render half of the grid-agreement
+   * invariant, sampled from the real vertex data so the test proves what
+   * the GPU is given, not what we intended to give it. Null off-floor.
+   */
+  sampleFloorBrightness(x: number, y: number): number | null;
 }
 
-export function extrudeLevel(level: ParsedLevel): ExtrudedLevel {
+/** The rendered brightness of a floor cell — the light grid through the monotone render curve. */
+export function cellBrightness(lightGrid: readonly number[][], x: number, y: number): number {
+  return gridBrightness(lightGrid[y]?.[x] ?? 0);
+}
+
+/**
+ * The rendered brightness of a wall cell: the brightest ADJACENT walkable
+ * cell's grid value (a wall face reads as lit as the room it bounds). Walls
+ * with no walkable neighbour render at the darkness floor.
+ */
+export function wallBrightness(level: ParsedLevel, lightGrid: readonly number[][], x: number, y: number): number {
+  let best = 0;
+  for (const [dx, dy] of [
+    [1, 0],
+    [-1, 0],
+    [0, 1],
+    [0, -1],
+  ] as const) {
+    const cell = level.cells[y + dy]?.[x + dx];
+    if (cell && cell.kind !== 'wall') {
+      best = Math.max(best, lightGrid[y + dy]?.[x + dx] ?? 0);
+    }
+  }
+  return gridBrightness(best);
+}
+
+/** Fills a geometry's `color` attribute with one flat brightness (grey — albedo comes from the material colour). */
+function paintGeometry(geometry: THREE.BufferGeometry, brightness: number): void {
+  const count = geometry.getAttribute('position').count;
+  const colors = new Float32Array(count * 3);
+  colors.fill(brightness);
+  geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+}
+
+export function extrudeLevel(level: ParsedLevel, lightGrid?: readonly number[][]): ExtrudedLevel {
   const { cellSize } = level;
   const group = new THREE.Group();
   const wallBounds: WallBounds[] = [];
+  // Without a grid (unit tests that only want wallBounds), everything paints
+  // at full brightness — visually flat, geometrically identical.
+  const grid = lightGrid ?? null;
 
   // --- Walls: one merged mesh, one draw call, regardless of grid size. ---
   const wallGeometries: THREE.BufferGeometry[] = [];
@@ -42,6 +87,7 @@ export function extrudeLevel(level: ParsedLevel): ExtrudedLevel {
       const centerZ = (y + 0.5) * cellSize;
       const box = new THREE.BoxGeometry(cellSize, WALL_HEIGHT, cellSize);
       box.translate(centerX, WALL_HEIGHT / 2, centerZ);
+      paintGeometry(box, grid ? wallBrightness(level, grid, x, y) : 1);
       wallGeometries.push(box);
 
       wallBounds.push({
@@ -54,13 +100,21 @@ export function extrudeLevel(level: ParsedLevel): ExtrudedLevel {
   }
   if (wallGeometries.length > 0) {
     const merged = mergeGeometries(wallGeometries);
-    const wallMesh = new THREE.Mesh(merged, new THREE.MeshStandardMaterial({ color: WALL_COLOR, roughness: 0.85 }));
+    // Grid-lit, not scene-lit: the wall's brightness IS its vertex colour, so
+    // the render cannot disagree with the sim's light grid. Torch spotlights
+    // light characters, not this mesh — but it still CASTS their shadows.
+    const wallMesh = new THREE.Mesh(merged, new THREE.MeshBasicMaterial({ color: WALL_COLOR, vertexColors: true }));
+    wallMesh.castShadow = true;
     group.add(wallMesh);
   }
 
   // --- Floor: two parallel merged-mesh sets (by surface, by zone), toggled by visibility. ---
   const bySurface = new Map<SurfaceType, THREE.BufferGeometry[]>();
   const byZone = new Map<string, THREE.BufferGeometry[]>();
+  // Where each cell's four vertices land in its surface's merged geometry,
+  // so sampleFloorBrightness can read the real attribute back.
+  const vertexOffsetBySurface = new Map<SurfaceType, number>();
+  const cellVertexIndex = new Map<string, { surface: SurfaceType; vertexIndex: number }>();
 
   for (let y = 0; y < level.height; y++) {
     for (let x = 0; x < level.width; x++) {
@@ -71,9 +125,15 @@ export function extrudeLevel(level: ParsedLevel): ExtrudedLevel {
       plane.rotateX(-Math.PI / 2);
       plane.translate((x + 0.5) * cellSize, 0, (y + 0.5) * cellSize);
 
+      const lit = plane.clone();
+      paintGeometry(lit, grid ? cellBrightness(grid, x, y) : 1);
       const surfaceList = bySurface.get(cell.surface) ?? [];
-      surfaceList.push(plane.clone());
+      surfaceList.push(lit);
       bySurface.set(cell.surface, surfaceList);
+
+      const offset = vertexOffsetBySurface.get(cell.surface) ?? 0;
+      cellVertexIndex.set(`${x},${y}`, { surface: cell.surface, vertexIndex: offset });
+      vertexOffsetBySurface.set(cell.surface, offset + lit.getAttribute('position').count);
 
       const zoneList = byZone.get(cell.zone) ?? [];
       zoneList.push(plane);
@@ -82,11 +142,13 @@ export function extrudeLevel(level: ParsedLevel): ExtrudedLevel {
   }
 
   const surfaceFloorGroup = new THREE.Group();
+  const mergedBySurface = new Map<SurfaceType, THREE.BufferGeometry>();
   for (const [surface, geometries] of bySurface) {
-    const mesh = new THREE.Mesh(
-      mergeGeometries(geometries),
-      new THREE.MeshStandardMaterial({ color: SURFACE_COLOR[surface], roughness: 0.95 }),
-    );
+    const merged = mergeGeometries(geometries);
+    mergedBySurface.set(surface, merged);
+    // Grid-lit like the walls: floor brightness IS the sim's light grid
+    // through the render curve, self-lit so no scene light can contradict it.
+    const mesh = new THREE.Mesh(merged, new THREE.MeshBasicMaterial({ color: SURFACE_COLOR[surface], vertexColors: true }));
     surfaceFloorGroup.add(mesh);
   }
 
@@ -142,6 +204,10 @@ export function extrudeLevel(level: ParsedLevel): ExtrudedLevel {
     const centerZ = (placement.y + 0.5) * cellSize;
     const prop = buildFurniture(placement.type);
     prop.position.set(centerX, 0, centerZ);
+    prop.traverse((child) => {
+      child.castShadow = true;
+      child.receiveShadow = true;
+    });
     group.add(prop);
 
     wallBounds.push({
@@ -166,6 +232,14 @@ export function extrudeLevel(level: ParsedLevel): ExtrudedLevel {
     },
     setGridOverlay(enabled: boolean) {
       gridOverlay.visible = enabled;
+    },
+    sampleFloorBrightness(x: number, y: number): number | null {
+      const entry = cellVertexIndex.get(`${x},${y}`);
+      if (!entry) {
+        return null;
+      }
+      const colors = mergedBySurface.get(entry.surface)?.getAttribute('color');
+      return colors ? colors.getX(entry.vertexIndex) : null;
     },
   };
 }

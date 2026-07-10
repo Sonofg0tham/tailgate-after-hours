@@ -22,6 +22,8 @@ import { applyPaletteToCss, PALETTE_HEX } from './config/palette';
 import { DETECTION } from './config/detection';
 import { THROW } from './config/throw';
 import { MISSION } from './config/mission';
+import { gridBrightness, RENDER_LIGHTING } from './config/renderLighting';
+import { buildFixtures } from './world/Fixtures';
 import { FixedTimestepLoop } from './sim/FixedTimestepLoop';
 import { InputRecorder, type InputLogEntry } from './sim/InputLog';
 import { stepHunt, type HuntEnvironment, type HuntState } from './sim/stepHunt';
@@ -102,17 +104,34 @@ async function main(): Promise<void> {
   appEl.appendChild(renderer.domElement);
 
   const level = parseLevel(floor12 as LevelData);
-  const extruded = extrudeLevel(level);
+  const lightGrid = buildLightGrid(level);
+  // The extruder paints floor/wall vertex colours FROM the light grid — the
+  // render-agrees-with-grid invariant, by construction (see Extruder.ts).
+  const extruded = extrudeLevel(level, lightGrid);
   scene.add(extruded.group);
 
-  const lightGrid = buildLightGrid(level);
   const lightGridMesh = buildLightGridMesh(level, lightGrid);
   scene.add(lightGridMesh);
 
-  scene.add(new THREE.AmbientLight(0xffffff, 0.6));
-  const keyLight = new THREE.DirectionalLight(0xffffff, 1.2);
-  keyLight.position.set(4, 8, 4);
-  scene.add(keyLight);
+  // The night rig (Phase 5): the daylight ambient+directional pair is gone.
+  // Dynamic objects (characters, furniture, door panels) get a dim ambient,
+  // per-source point lights (Fixtures.ts), the guard torch spotlights, and
+  // the player's visibility-floor fill; floors/walls are grid-lit and ignore
+  // all of it.
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  scene.add(new THREE.AmbientLight(RENDER_LIGHTING.ambient.color, RENDER_LIGHTING.ambient.intensity));
+  scene.add(buildFixtures(level));
+
+  // The nystagmus visibility floor's character half: the operator always
+  // reads, whatever the darkness. Concealment is unchanged — sim never sees this.
+  const playerFill = new THREE.PointLight(
+    RENDER_LIGHTING.playerFill.color,
+    RENDER_LIGHTING.playerFill.intensity,
+    RENDER_LIGHTING.playerFill.distanceMetres,
+    1.5,
+  );
+  scene.add(playerFill);
 
   const noiseRing = new NoiseRingRenderer();
   scene.add(noiseRing.mesh);
@@ -133,14 +152,22 @@ async function main(): Promise<void> {
     Promise.all(guardsData.guards.map(() => loadGuardCharacter())),
     Promise.all(staffData.staff.map(() => loadStaffCharacter())),
   ]);
+  const enableCharacterShadows = (model: THREE.Object3D): void => {
+    model.traverse((child) => {
+      child.castShadow = true;
+      child.receiveShadow = true;
+    });
+  };
   scene.add(player.model);
+  enableCharacterShadows(player.model);
   const animation = new AnimationController(player.model, player.clips);
 
   const guards = guardsData.guards.map((routeDef, i) => {
     const character = guardCharacters[i];
     scene.add(character.model);
+    enableCharacterShadows(character.model);
     const torch = new TorchBeam();
-    scene.add(torch.mesh);
+    scene.add(torch.group);
     const debugCone = new DebugVisionCone();
     scene.add(debugCone.mesh);
     return {
@@ -155,6 +182,7 @@ async function main(): Promise<void> {
   const staffEntities = staffData.staff.map((routeDef, i) => {
     const character = staffCharacters[i];
     scene.add(character.model);
+    enableCharacterShadows(character.model);
     return { routeDef, model: character.model, animation: new StaffAnimationController(character.model, character.clips) };
   });
 
@@ -242,6 +270,7 @@ async function main(): Promise<void> {
     extruded.setGridOverlay(state.gridOverlay);
     extruded.setSurfaceTintDebug(state.surfaceTints);
     lightGridMesh.visible = state.lightGrid;
+    renderer.domElement.style.filter = state.greyscale ? 'grayscale(1)' : '';
     for (const guard of guards) {
       guard.debugCone.mesh.visible = state.guardDebug;
     }
@@ -283,6 +312,7 @@ async function main(): Promise<void> {
       extruded.setGridOverlay(debugState.gridOverlay);
       extruded.setSurfaceTintDebug(debugState.surfaceTints);
       lightGridMesh.visible = debugState.lightGrid;
+      renderer.domElement.style.filter = debugState.greyscale ? 'grayscale(1)' : '';
       for (const guard of guards) {
         guard.debugCone.mesh.visible = debugState.guardDebug;
       }
@@ -503,6 +533,7 @@ async function main(): Promise<void> {
 
     player.model.position.set(huntState.player.x, 0, huntState.player.z);
     player.model.rotation.y = huntState.player.facingYaw;
+    playerFill.position.set(huntState.player.x, RENDER_LIGHTING.playerFill.heightMetres, huntState.player.z);
     animation.setState(lastIntent.speed, lastIntent.crouched);
     animation.update(frameDelta);
 
@@ -603,6 +634,18 @@ async function main(): Promise<void> {
       for (const guardState of huntState.guards) {
         hudLines.push(`${guardState.id}: ${guardState.state} (${guardState.suspicion.toFixed(0)})`);
       }
+    }
+    if (debugState.lightGrid) {
+      // The grid-vs-render agreement readout: the sim's value for the
+      // player's cell, what the floor geometry actually renders, and what
+      // the curve says it should render. The two right numbers must match.
+      const cx = Math.floor(huntState.player.x);
+      const cy = Math.floor(huntState.player.z);
+      const simValue = lightGrid[cy]?.[cx] ?? 0;
+      const rendered = extruded.sampleFloorBrightness(cx, cy);
+      hudLines.push(
+        `grid @(${cx},${cy}) sim ${simValue.toFixed(2)} | rendered ${rendered?.toFixed(2) ?? 'n/a'} | curve ${gridBrightness(simValue).toFixed(2)}`,
+      );
     }
     hudEl.textContent = hudLines.join('\n');
 
