@@ -108,28 +108,32 @@ const ghost: MissionState = {
   boltsThrown: 1,
 };
 
-// 2. A caught-but-finished DETAINED run.
+// 2. A caught-but-finished DETAINED run — a long, troubled night that went
+//    into lockdown, got the consultant detained once, and only cleared the
+//    site near dawn (each fictional minute is 3000ms of the night).
 const detained: MissionState = {
   ...createMissionState(),
   phase: 'exfilled',
   ingressRoute: 'lobby',
-  ingressAtMs: 18_000,
-  plantedAtMs: 120_000,
-  photos: { 'corner-office': null, 'sticky-note': 96_000 },
-  exfilledAtMs: 210_000,
+  ingressAtMs: 33_000, // 01:11
+  photos: { 'corner-office': null, 'sticky-note': 195_000 }, // 02:05
+  plantedAtMs: 480_000, // 03:40
+  exfilledAtMs: 645_000, // 04:35, out with minutes to spare
   everSpotted: true,
   maxAlertLevel: 2,
   detains: 1,
   boltsThrown: 2,
 };
 
-// 3. A dawn timeout: planted, but the consultant never cleared the site.
+// 3. A dawn timeout: a full night that ran right to the wire — planted at
+//    04:30, then dawn broke before the consultant could clear the site.
 const dawn: MissionState = {
   ...createMissionState(),
   phase: 'dawn',
   ingressRoute: 'fire-stairs',
-  ingressAtMs: 9000,
-  plantedAtMs: 540_000,
+  ingressAtMs: 24_000, // 01:08
+  photos: { 'corner-office': 450_000, 'sticky-note': null }, // 03:30
+  plantedAtMs: 630_000, // 04:30
   everSpotted: true,
   maxAlertLevel: 1,
 };

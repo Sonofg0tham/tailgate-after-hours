@@ -89,12 +89,38 @@ describe('generateReport', () => {
   });
 
   it('frames the dawn outcome with its own banner and rating', () => {
-    const mission: MissionState = { ...createMissionState(), phase: 'dawn', ingressRoute: 'fire-stairs', ingressAtMs: 5000 };
+    const mission: MissionState = { ...createMissionState(), phase: 'dawn', ingressRoute: 'fire-stairs', ingressAtMs: 9000 };
     const report = generateReport(mission);
     expect(report.dawn).toBe(true);
     expect(report.rating).toBe('DAWN');
     expect(report.header.outcomeLine).toContain('PRIMARY OBJECTIVE INCOMPLETE');
-    expect(report.summary.timeOnSite).toBe('12:00'); // ran the full night to dawn
+    // On site from ingress (01:03) to dawn (05:00) = 03:57 on the fictional
+    // clock — NOT the ~12 real minutes of the night ("12:00" was the bug).
+    expect(report.summary.timeOnSite).toBe('03:57');
+  });
+
+  it('never reports a time on site longer than the whole night (04:00), for any outcome', () => {
+    const missions: MissionState[] = [
+      exfilled(), // GHOST
+      exfilled({ everSpotted: true }), // PROFESSIONAL
+      exfilled({ maxAlertLevel: 1 }), // NOISY
+      exfilled({ detains: 1 }), // DETAINED
+      { ...createMissionState(), phase: 'dawn', ingressRoute: 'lift', ingressAtMs: 0 }, // DAWN, entered at 01:00
+    ];
+    for (const m of missions) {
+      const [hh, mm] = generateReport(m).summary.timeOnSite.split(':').map(Number);
+      expect(hh * 60 + mm).toBeLessThanOrEqual(240); // 04:00 = 240 fictional minutes
+    }
+  });
+
+  it('reports time on site on the same fictional clock as the finding timestamps', () => {
+    // Entered at 01:06 (ingress 18000 -> stampClock 01:06), exfil at 02:00
+    // (180000). On site 00:54, consistent with those two finding stamps.
+    const mission = exfilled({ ingressAtMs: 18_000, exfilledAtMs: 180_000 });
+    expect(mission.ingressAtMs).toBe(18_000);
+    const report = generateReport(mission);
+    expect(report.findings.find((f) => f.text.includes('entry') || f.text.includes('lift') || f.text.includes('lobby'))?.text).toContain('01:06');
+    expect(report.summary.timeOnSite).toBe('00:54');
   });
 
   it('dawn after a plant notes the consultant did not clear the site', () => {
