@@ -2,9 +2,12 @@ name: CI
 
 # Run on every pull request that targets main, and again on main itself after
 # a merge, so a broken change can never sit unnoticed on the default branch.
+# Also runs on PRs targeting phase-* branches, so a stacked phase PR (one
+# opened against the previous phase's branch while that phase awaits review)
+# gets the same gate instead of arriving at main untested.
 on:
   pull_request:
-    branches: [main]
+    branches: [main, 'phase-*']
   push:
     branches: [main]
 
