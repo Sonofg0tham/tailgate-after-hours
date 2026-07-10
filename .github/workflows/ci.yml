@@ -61,3 +61,17 @@ jobs:
           curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" -o gitleaks.tar.gz
           tar -xzf gitleaks.tar.gz gitleaks
           ./gitleaks detect --source . --no-banner --redact --exit-code 1
+
+      # Build the production bundle and attach it as a downloadable zip.
+      # Because Vite builds with base './', the dist/ contents run from any
+      # directory — download the artefact from the Actions run, upload it to
+      # itch.io as an HTML5 game, done. Nothing extra to configure.
+      - name: Build production bundle
+        run: npm run build
+
+      - name: Upload itch.io-ready bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: tailgate-after-hours-web
+          path: dist/
+          if-no-files-found: error

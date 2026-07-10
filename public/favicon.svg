@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- Access badge on a lanyard: the game's sign-in identity, hand-authored.
+       Palette: near-black base, clearance amber. No external refs. -->
+  <rect width="32" height="32" rx="6" fill="#0E1116"/>
+  <!-- lanyard clip -->
+  <rect x="13" y="3" width="6" height="4" rx="1.5" fill="#4A5361"/>
+  <!-- badge card -->
+  <rect x="7" y="7" width="18" height="22" rx="2.5" fill="none" stroke="#FFB000" stroke-width="2"/>
+  <!-- photo block -->
+  <rect x="11" y="11" width="6" height="7" rx="1" fill="#FFB000"/>
+  <!-- name lines -->
+  <rect x="11" y="21" width="10" height="2" rx="1" fill="#C7CDD4"/>
+  <rect x="11" y="25" width="7" height="2" rx="1" fill="#4A5361"/>
+</svg>
