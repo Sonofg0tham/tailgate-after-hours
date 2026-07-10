@@ -44,6 +44,26 @@ export interface FurniturePlacement {
   type: string;
 }
 
+/**
+ * A door singled out for Phase 3 behaviour beyond the static open/closed the
+ * legend already gives every door cell. `kind` picks which schedule/access
+ * system in src/config/doors.ts drives it at runtime:
+ *   - 'badge'   — the lobby tailgate: opens for a staff badge, stays open for
+ *                 the tailgate window, a second person through counts as a
+ *                 witnessed tailgate.
+ *   - 'smokers' — the fire-stairs door: propped open on a repeating schedule
+ *                 (the cleaners' smoke breaks), otherwise closed.
+ *   - 'lift'    — the goods lift: open on a repeating schedule, otherwise
+ *                 closed, no badge or staff involvement.
+ * Doors NOT listed here keep Phase 1/2's plain static open/closed behaviour.
+ */
+export interface DoorKindDef {
+  x: number;
+  y: number;
+  id: string;
+  kind: 'badge' | 'smokers' | 'lift';
+}
+
 /** The raw shape of src/data/floor12.json. */
 export interface LevelData {
   cellSize: number;
@@ -54,6 +74,7 @@ export interface LevelData {
   layout: string[];
   furniture: FurniturePlacement[];
   lights: LightSource[];
+  doors: DoorKindDef[];
   playerStart: { x: number; y: number };
 }
 
@@ -74,6 +95,7 @@ export interface ParsedLevel {
   cells: ParsedCell[][];
   furniture: FurniturePlacement[];
   lights: LightSource[];
+  doors: DoorKindDef[];
   playerStart: { x: number; y: number };
   zones: Record<string, ZoneDef>;
 }
@@ -122,6 +144,13 @@ export function parseLevel(data: LevelData): ParsedLevel {
     }
   }
 
+  for (const d of data.doors) {
+    const cell = cells[d.y]?.[d.x];
+    if (!cell || cell.kind !== 'door') {
+      throw new Error(`Door entry ${JSON.stringify(d)} doesn't sit on a door cell at (${d.x}, ${d.y})`);
+    }
+  }
+
   return {
     cellSize: data.cellSize,
     width: data.width,
@@ -129,6 +158,7 @@ export function parseLevel(data: LevelData): ParsedLevel {
     cells,
     furniture: data.furniture,
     lights: data.lights,
+    doors: data.doors,
     playerStart: data.playerStart,
     zones: data.zones,
   };
@@ -149,22 +179,23 @@ export function isWall(level: ParsedLevel, x: number, y: number): boolean {
   return level.cells[y][x].kind === 'wall';
 }
 
-/** True for any cell a capsule should collide with: walls and furniture. */
-export function isSolid(level: ParsedLevel, x: number, y: number): boolean {
-  if (x < 0 || y < 0 || x >= level.width || y >= level.height) {
-    return true;
-  }
-  const kind = level.cells[y][x].kind;
-  return kind === 'wall' || kind === 'furniture';
-}
+/**
+ * A per-tick lookup of the CURRENT open state of dynamic (badge/smokers/
+ * lift) doors, keyed "x,y". These are the only doors whose open state
+ * changes at runtime — every other door cell's `doorOpen` is fixed at load
+ * (Phase 1/2's plain static behaviour). Passed through from src/systems/
+ * DoorState.ts; omitted entirely by any caller that doesn't care (static
+ * levels in tests, Phase 1/2 call sites), which keeps this addition fully
+ * backward compatible with every existing signature below.
+ */
+export type DoorOpenLookup = ReadonlyMap<string, boolean>;
 
 /**
- * True for any cell that blocks line-of-sight: walls, closed doors, and
- * furniture (a desk or rack occludes just as much as a wall does). Movement
- * solidity and sight-blocking are deliberately separate checks — an open
- * door is walkable AND see-through; a closed one is walkable but opaque.
+ * True for any cell a capsule should collide with: walls and furniture,
+ * plus a dynamic door currently reading closed in `doorOverrides`. Static
+ * (non-dynamic) doors are never solid to movement — unchanged from Phase 1/2.
  */
-export function blocksSight(level: ParsedLevel, x: number, y: number): boolean {
+export function isSolid(level: ParsedLevel, x: number, y: number, doorOverrides?: DoorOpenLookup): boolean {
   if (x < 0 || y < 0 || x >= level.width || y >= level.height) {
     return true;
   }
@@ -172,7 +203,37 @@ export function blocksSight(level: ParsedLevel, x: number, y: number): boolean {
   if (cell.kind === 'wall' || cell.kind === 'furniture') {
     return true;
   }
-  return cell.kind === 'door' && cell.doorOpen === false;
+  if (cell.kind === 'door' && doorOverrides) {
+    const open = doorOverrides.get(`${x},${y}`);
+    if (open !== undefined) {
+      return !open;
+    }
+  }
+  return false;
+}
+
+/**
+ * True for any cell that blocks line-of-sight: walls, closed doors, and
+ * furniture (a desk or rack occludes just as much as a wall does). Movement
+ * solidity and sight-blocking are deliberately separate checks — an open
+ * door is walkable AND see-through; a closed one is walkable but opaque
+ * (unless it's also a dynamic door, in which case closed blocks movement
+ * too — see `isSolid`). `doorOverrides` takes priority over the door's
+ * static `doorOpen` when the cell has a current entry.
+ */
+export function blocksSight(level: ParsedLevel, x: number, y: number, doorOverrides?: DoorOpenLookup): boolean {
+  if (x < 0 || y < 0 || x >= level.width || y >= level.height) {
+    return true;
+  }
+  const cell = level.cells[y][x];
+  if (cell.kind === 'wall' || cell.kind === 'furniture') {
+    return true;
+  }
+  if (cell.kind !== 'door') {
+    return false;
+  }
+  const open = doorOverrides?.get(`${x},${y}`) ?? cell.doorOpen;
+  return open === false;
 }
 
 /**

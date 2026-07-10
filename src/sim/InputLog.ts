@@ -7,6 +7,8 @@ import type { WallBounds } from '../physics/CapsuleCollider';
 export interface InputLogEntry {
   tick: number;
   intent: MovementIntent;
+  /** A bolt released this tick, already resolved to a landing point (src/systems/ThrowAim.ts), or null. */
+  throwAction: { x: number; z: number } | null;
 }
 
 /**
@@ -34,8 +36,8 @@ export class InputRecorder {
     private readonly startState: PlayerState,
   ) {}
 
-  record(tick: number, intent: MovementIntent): void {
-    this.entries.push({ tick, intent });
+  record(tick: number, intent: MovementIntent, throwAction: { x: number; z: number } | null = null): void {
+    this.entries.push({ tick, intent, throwAction });
   }
 
   toLog(): InputLog {
@@ -65,7 +67,7 @@ export function replay(log: InputLog, walls: readonly WallBounds[]): PlayerState
 export function replayHunt(log: InputLog, startState: HuntState, env: HuntEnvironment): HuntState {
   let state = startState;
   for (const entry of log.entries) {
-    state = stepHunt(state, entry.intent, env, log.stepSeconds, log.stepSeconds * 1000).state;
+    state = stepHunt(state, entry.intent, entry.throwAction, env, log.stepSeconds, log.stepSeconds * 1000).state;
   }
   return state;
 }

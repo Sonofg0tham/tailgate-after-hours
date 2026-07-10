@@ -27,6 +27,17 @@ export interface LoadedGuardCharacter {
   clips: GuardClips;
 }
 
+/** The two clips a cleaner needs — no run, no crouch, cleaners never hurry. */
+export interface StaffClips {
+  idle: THREE.AnimationClip;
+  walk: THREE.AnimationClip;
+}
+
+export interface LoadedStaffCharacter {
+  model: THREE.Object3D;
+  clips: StaffClips;
+}
+
 const loader = new GLTFLoader();
 
 function loadGltf(url: string): Promise<{ scene: THREE.Group; animations: THREE.AnimationClip[] }> {
@@ -90,6 +101,30 @@ export async function loadGuardCharacter(): Promise<LoadedGuardCharacter> {
       idle: findClip(general.animations, 'Idle_A'),
       walk: findClip(movementBasic.animations, 'Walking_A'),
       run: findClip(movementBasic.animations, 'Running_A'),
+    },
+  };
+}
+
+/**
+ * Loads a cleaner. PLACEHOLDER: reuses the player's own rogue_hooded.glb
+ * body rather than a distinct civilian model — no third KayKit Adventurers
+ * character has been sourced for this greybox pass, so a cleaner is
+ * currently visually identical to the player at a glance (flagged in the
+ * Phase 3 PR; a real civilian body is a follow-up asset pull, same pack,
+ * same licence, no new gate needed). Idle/walk only — cleaners never run.
+ */
+export async function loadStaffCharacter(): Promise<LoadedStaffCharacter> {
+  const [body, general, movementBasic] = await Promise.all([
+    loadGltf('/models/rogue_hooded.glb'),
+    loadGltf('/models/rig_medium_general.glb'),
+    loadGltf('/models/rig_medium_movementbasic.glb'),
+  ]);
+
+  return {
+    model: body.scene,
+    clips: {
+      idle: findClip(general.animations, 'Idle_A'),
+      walk: findClip(movementBasic.animations, 'Walking_A'),
     },
   };
 }

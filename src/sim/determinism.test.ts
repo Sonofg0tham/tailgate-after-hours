@@ -2,13 +2,16 @@ import { describe, expect, it } from 'vitest';
 import { parseLevel, type LevelData } from '../world/level';
 import { extrudeLevel } from '../world/Extruder';
 import { buildLightGrid } from '../systems/LightModel';
+import { createDoorState } from '../systems/DoorState';
 import { InputRecorder, replay, replayHunt, type InputLog } from './InputLog';
 import type { HuntEnvironment, HuntState } from './stepHunt';
 import { createGuardState, type GuardsData } from '../entities/GuardState';
+import { createStaffState, type StaffData } from '../entities/StaffState';
 import type { MovementIntent } from '../input/InputState';
 import type { PlayerState } from './PlayerState';
 import floor12 from '../data/floor12.json';
 import guardsData from '../data/guards.json';
+import staffData from '../data/staff.json';
 
 const STEP_SECONDS = 1 / 60;
 
@@ -47,7 +50,7 @@ describe('replay determinism (seed + input log)', () => {
     const log = scriptedRun();
     const divergent: InputLog = {
       ...log,
-      entries: [{ tick: 0, intent: intent(1, 0, 'run') }, ...log.entries],
+      entries: [{ tick: 0, intent: intent(1, 0, 'run'), throwAction: null }, ...log.entries],
     };
     const baseline = replay(log, extruded.wallBounds);
     const divergedResult = replay(divergent, extruded.wallBounds);
@@ -72,11 +75,16 @@ describe('replay determinism with guards (Phase 2)', () => {
     lightGrid,
     wallBounds: extruded.wallBounds,
     routes: guardRoutes.map((g) => g.route),
+    staffRoutes: (staffData as StaffData).staff,
   };
   const huntStart: HuntState = {
     player: startState,
     guards: guardRoutes.map(createGuardState),
     alertLevel: { level: 0, msSinceIncident: 0 },
+    simTimeMs: 0,
+    doors: level.doors.map(createDoorState),
+    staff: (staffData as StaffData).staff.map(createStaffState),
+    bolts: [],
   };
 
   it('guards have no input of their own, yet replaying the same log reproduces them byte-identically', () => {
@@ -90,7 +98,7 @@ describe('replay determinism with guards (Phase 2)', () => {
     const log = scriptedRun();
     const divergent: InputLog = {
       ...log,
-      entries: [{ tick: 0, intent: intent(1, 0, 'run') }, ...log.entries],
+      entries: [{ tick: 0, intent: intent(1, 0, 'run'), throwAction: null }, ...log.entries],
     };
     const baseline = replayHunt(log, huntStart, env);
     const diverged = replayHunt(divergent, huntStart, env);
@@ -103,5 +111,74 @@ describe('replay determinism with guards (Phase 2)', () => {
       const moved = result.guards[i].x !== huntStart.guards[i].x || result.guards[i].z !== huntStart.guards[i].z;
       expect(moved).toBe(true);
     }
+  });
+});
+
+describe('replay determinism with a door, a throw, and an ingress window (Phase 3)', () => {
+  const guardRoutes = (guardsData as GuardsData).guards;
+  const lightGrid = buildLightGrid(level);
+  const env: HuntEnvironment = {
+    level,
+    lightGrid,
+    wallBounds: extruded.wallBounds,
+    routes: guardRoutes.map((g) => g.route),
+    staffRoutes: (staffData as StaffData).staff,
+  };
+
+  // The goods lift door: closed until its schedule opens at simTimeMs 20000
+  // (openForMs 6000, closedForMs 20000, phaseMs 0 — src/config/doors.ts).
+  const LIFT_DOOR_CELL = { x: 9, y: 11 };
+
+  function doorRunStart(): HuntState {
+    return {
+      player: { x: LIFT_DOOR_CELL.x + 0.5, z: LIFT_DOOR_CELL.y + 1.5, facingYaw: 0 }, // one cell south of the lift door
+      guards: guardRoutes.map(createGuardState),
+      alertLevel: { level: 0, msSinceIncident: 0 },
+      simTimeMs: 19900, // just before the lift's ingress window opens
+      doors: level.doors.map(createDoorState),
+      staff: (staffData as StaffData).staff.map(createStaffState),
+      bolts: [],
+    };
+  }
+
+  /** Walks north through the (initially closed, then scheduled-open) lift door, throwing one bolt partway through. */
+  function doorThrowRun(): InputLog {
+    const start = doorRunStart();
+    const recorder = new InputRecorder('PHASE3-DOOR-THROW-SEED', STEP_SECONDS, start.player);
+    for (let i = 0; i < 120; i++) {
+      const throwAction = i === 30 ? { x: LIFT_DOOR_CELL.x + 0.5, z: LIFT_DOOR_CELL.y - 3.5 } : null;
+      recorder.record(i, intent(0, -1, 'walk'), throwAction);
+    }
+    return recorder.toLog();
+  }
+
+  it('two replays of a run using the lift door, its ingress window, and a thrown bolt are byte-identical', () => {
+    const log = doorThrowRun();
+    const start = doorRunStart();
+    const resultA = replayHunt(log, start, env);
+    const resultB = replayHunt(log, start, env);
+    expect(resultA).toEqual(resultB);
+  });
+
+  it('the run actually passes through the lift door once its schedule opens', () => {
+    const result = replayHunt(doorThrowRun(), doorRunStart(), env);
+    expect(result.player.z).toBeLessThan(LIFT_DOOR_CELL.y); // north of the door row: made it through
+  });
+
+  it('the thrown bolt is recorded and lands deterministically', () => {
+    const result = replayHunt(doorThrowRun(), doorRunStart(), env);
+    expect(result.bolts.length).toBe(1);
+    expect(result.bolts[0].landed).toBe(true);
+  });
+
+  it('a run that throws diverges from an otherwise identical run that does not', () => {
+    const start = doorRunStart();
+    const withThrow = replayHunt(doorThrowRun(), start, env);
+
+    const recorder = new InputRecorder('PHASE3-NO-THROW-SEED', STEP_SECONDS, start.player);
+    for (let i = 0; i < 120; i++) recorder.record(i, intent(0, -1, 'walk'), null);
+    const withoutThrow = replayHunt(recorder.toLog(), start, env);
+
+    expect(withThrow.bolts).not.toEqual(withoutThrow.bolts);
   });
 });

@@ -1,4 +1,4 @@
-import { blocksSight, type ParsedLevel } from '../world/level';
+import { blocksSight, type DoorOpenLookup, type ParsedLevel } from '../world/level';
 import { shortestAngleDelta } from '../character/FacingController';
 
 const SAMPLES_PER_CELL = 4;
@@ -12,7 +12,14 @@ const SAMPLES_PER_CELL = 4;
  * original line-vs-rectangle analytic test. Same effect, grid-native
  * implementation, per the explicit Phase 2 design direction.
  */
-export function hasLineOfSight(level: ParsedLevel, fromX: number, fromY: number, toX: number, toY: number): boolean {
+export function hasLineOfSight(
+  level: ParsedLevel,
+  fromX: number,
+  fromY: number,
+  toX: number,
+  toY: number,
+  doorOverrides?: DoorOpenLookup,
+): boolean {
   const dx = toX - fromX;
   const dy = toY - fromY;
   const distance = Math.hypot(dx, dy);
@@ -25,7 +32,7 @@ export function hasLineOfSight(level: ParsedLevel, fromX: number, fromY: number,
     const t = i / steps;
     const x = fromX + dx * t;
     const y = fromY + dy * t;
-    if (blocksSight(level, Math.floor(x), Math.floor(y))) {
+    if (blocksSight(level, Math.floor(x), Math.floor(y), doorOverrides)) {
       return false;
     }
   }
@@ -45,6 +52,7 @@ export function raycastDistance(
   originY: number,
   angleRadians: number,
   maxDistance: number,
+  doorOverrides?: DoorOpenLookup,
 ): number {
   const dirX = Math.sin(angleRadians);
   const dirY = Math.cos(angleRadians);
@@ -54,7 +62,7 @@ export function raycastDistance(
     const dist = (i / steps) * maxDistance;
     const x = originX + dirX * dist;
     const y = originY + dirY * dist;
-    if (blocksSight(level, Math.floor(x), Math.floor(y))) {
+    if (blocksSight(level, Math.floor(x), Math.floor(y), doorOverrides)) {
       return dist;
     }
   }
@@ -77,6 +85,7 @@ export function canSeePoint(
   targetY: number,
   rangeCells: number,
   fovDegrees: number,
+  doorOverrides?: DoorOpenLookup,
 ): boolean {
   const dx = targetX - originX;
   const dy = targetY - originY;
@@ -93,5 +102,5 @@ export function canSeePoint(
     }
   }
 
-  return hasLineOfSight(level, originX, originY, targetX, targetY);
+  return hasLineOfSight(level, originX, originY, targetX, targetY, doorOverrides);
 }

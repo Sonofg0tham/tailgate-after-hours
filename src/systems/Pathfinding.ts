@@ -1,4 +1,4 @@
-import { isSolid, type ParsedLevel } from '../world/level';
+import { isSolid, type DoorOpenLookup, type ParsedLevel } from '../world/level';
 
 export interface GridPoint {
   x: number;
@@ -40,8 +40,13 @@ function heuristic(a: GridPoint, b: GridPoint): number {
  * Returns the path from start to goal INCLUSIVE, or null if no path exists
  * (goal is unreachable, or start/goal themselves are solid).
  */
-export function findPath(level: ParsedLevel, start: GridPoint, goal: GridPoint): GridPoint[] | null {
-  if (isSolid(level, start.x, start.y) || isSolid(level, goal.x, goal.y)) {
+export function findPath(
+  level: ParsedLevel,
+  start: GridPoint,
+  goal: GridPoint,
+  doorOverrides?: DoorOpenLookup,
+): GridPoint[] | null {
+  if (isSolid(level, start.x, start.y, doorOverrides) || isSolid(level, goal.x, goal.y, doorOverrides)) {
     return null;
   }
   if (start.x === goal.x && start.y === goal.y) {
@@ -74,10 +79,14 @@ export function findPath(level: ParsedLevel, start: GridPoint, goal: GridPoint):
     for (const { dx, dy, cost, diagonal } of NEIGHBOUR_OFFSETS) {
       const nx = current.x + dx;
       const ny = current.y + dy;
-      if (isSolid(level, nx, ny)) {
+      if (isSolid(level, nx, ny, doorOverrides)) {
         continue;
       }
-      if (diagonal && (isSolid(level, current.x + dx, current.y) || isSolid(level, current.x, current.y + dy))) {
+      if (
+        diagonal &&
+        (isSolid(level, current.x + dx, current.y, doorOverrides) ||
+          isSolid(level, current.x, current.y + dy, doorOverrides))
+      ) {
         continue; // no cutting a solid corner
       }
       const nKey = key(nx, ny);

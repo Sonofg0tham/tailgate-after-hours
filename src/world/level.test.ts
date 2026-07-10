@@ -19,6 +19,7 @@ const MINIMAL: LevelData = {
   layout: ['#####', '#d+=#', '#####'],
   furniture: [{ x: 1, y: 1, type: 'desk' }],
   lights: [],
+  doors: [{ x: 2, y: 1, id: 'test-door', kind: 'badge' }],
   playerStart: { x: 2, y: 1 },
 };
 
@@ -57,6 +58,17 @@ describe('parseLevel', () => {
 
   it('throws when a furniture entry does not match its layout cell', () => {
     expect(() => parseLevel({ ...MINIMAL, furniture: [{ x: 0, y: 0, type: 'desk' }] })).toThrow(/doesn't match/);
+  });
+
+  it('throws when a door entry does not sit on a door cell', () => {
+    expect(() =>
+      parseLevel({ ...MINIMAL, doors: [{ x: 0, y: 0, id: 'bad', kind: 'badge' }] }),
+    ).toThrow(/doesn't sit on a door cell/);
+  });
+
+  it('parses a valid door entry onto the matching layout cell', () => {
+    const level = parseLevel(MINIMAL);
+    expect(level.doors).toEqual([{ x: 2, y: 1, id: 'test-door', kind: 'badge' }]);
   });
 });
 
