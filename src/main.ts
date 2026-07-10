@@ -24,6 +24,9 @@ import { THROW } from './config/throw';
 import { MISSION } from './config/mission';
 import { gridBrightness, RENDER_LIGHTING } from './config/renderLighting';
 import { buildFixtures } from './world/Fixtures';
+import { AudioEngine } from './audio/AudioEngine';
+import { AUDIO } from './config/audio';
+import { hasLineOfSight } from './systems/Vision';
 import { FixedTimestepLoop } from './sim/FixedTimestepLoop';
 import { InputRecorder, type InputLogEntry } from './sim/InputLog';
 import { stepHunt, type HuntEnvironment, type HuntState } from './sim/stepHunt';
@@ -132,6 +135,17 @@ async function main(): Promise<void> {
     1.5,
   );
   scene.add(playerFill);
+
+  // Audio: reads events and state each tick/frame, never writes back. The
+  // occlusion callback reuses the grid's own sight test, so a guard behind
+  // a wall sounds muffled exactly where he'd be unseen. Unlock rides the
+  // first real input (autoplay policy); the listeners stay attached so a
+  // suspended context resumes too.
+  const audio = new AudioEngine({
+    isOccluded: (sourceX, sourceZ, listenerX, listenerZ) => !hasLineOfSight(level, listenerX, listenerZ, sourceX, sourceZ),
+  });
+  window.addEventListener('keydown', () => audio.unlock());
+  window.addEventListener('pointerdown', () => audio.unlock());
 
   const noiseRing = new NoiseRingRenderer();
   scene.add(noiseRing.mesh);
@@ -257,6 +271,8 @@ async function main(): Promise<void> {
   let prevDoorId: string | null = null;
   let drivenIntent: MovementIntent | null = null;
   let drivenInteract: boolean | null = null;
+  let playerStepTimerMs = 0;
+  const guardStepTimersMs = guardsData.guards.map(() => 0);
 
   const movement = new MovementController();
   const keyboard = new KeyboardState();
@@ -369,6 +385,8 @@ async function main(): Promise<void> {
     __driveInteract: (held: boolean) => {
       drivenInteract = held;
     },
+    // Phase 5: master volume (the Phase 6 settings knob, reachable early).
+    __setVolume: (v: number) => audio.setMasterVolume(v),
   });
 
   // Aim tracking: mouse position raycast onto the ground plane, kept
@@ -461,6 +479,53 @@ async function main(): Promise<void> {
         boltLandingRing.update(bolt.x, bolt.z, THROW.noiseRadiusMetres);
         boltLandingRing.setVisible(true);
         boltLandingRingRemainingMs = BOLT_LANDING_RING_MS;
+        audio.play('boltLand', { at: { x: bolt.x, z: bolt.z } });
+      }
+    }
+
+    // Event cues: the sim's own events drive the sound, one way only.
+    for (const event of result.events) {
+      const guardAt = huntState.guards.find((g) => g.id === ('guardId' in event ? event.guardId : ''));
+      if (event.type === 'stateChanged' && event.to === 'alert') {
+        audio.play('sting');
+      } else if (event.type === 'stateChanged' && event.to === 'curious') {
+        audio.play('curiousTick', guardAt ? { at: { x: guardAt.x, z: guardAt.z } } : {});
+      } else if (event.type === 'radioCall') {
+        audio.play('radioSquelch', guardAt ? { at: { x: guardAt.x, z: guardAt.z } } : {});
+      } else if (event.type === 'detain') {
+        audio.play('detainLine');
+        audio.duck(AUDIO.detainDuck.amount, AUDIO.detainDuck.holdMs);
+      }
+    }
+
+    // Player footsteps: cadence by speed, voice by the surface underfoot —
+    // the same grid data the noise sim reads, so what you hear is what
+    // guards hear.
+    const stepSpeed = intent.speed;
+    if (stepSpeed !== 'idle') {
+      playerStepTimerMs += dtMs;
+      if (playerStepTimerMs >= AUDIO.playerFootsteps.intervalMs[stepSpeed]) {
+        playerStepTimerMs = 0;
+        const surface = surfaceAt(level, huntState.player.x, huntState.player.z) ?? 'concrete';
+        const cue = surface === 'carpet' ? 'footstepCarpet' : surface === 'tile' ? 'footstepTile' : 'footstepConcrete';
+        audio.play(cue, { gain: AUDIO.playerFootsteps.gain[stepSpeed] });
+      }
+    } else {
+      playerStepTimerMs = 0;
+    }
+
+    // Guard footsteps: spatialised at each guard, cadence from their pace.
+    for (let i = 0; i < huntState.guards.length; i++) {
+      const g = huntState.guards[i];
+      const pace = guardAnimationState(g);
+      if (pace === 'idle') {
+        guardStepTimersMs[i] = 0;
+        continue;
+      }
+      guardStepTimersMs[i] += dtMs;
+      if (guardStepTimersMs[i] >= AUDIO.guardFootsteps.intervalMs[pace]) {
+        guardStepTimersMs[i] = 0;
+        audio.play('guardFootstep', { at: { x: g.x, z: g.z }, gain: AUDIO.guardFootsteps.gain });
       }
     }
     if (boltLandingRingRemainingMs > 0) {
@@ -504,13 +569,17 @@ async function main(): Promise<void> {
       const report = generateReport(mission);
       telemetry.recordMissionEnd(mission, report.rating, endMs);
       recordCompletion(report.rating, Math.round(endMs / 1000));
+      audio.play('reportPrint');
       reportView.show(report, () => {
+        audio.play('uiClick');
         reportView.hide();
         huntState = freshHuntState();
         telemetry = new Telemetry();
         reportShown = false;
         tick = 0;
         prevDoorId = null;
+        playerStepTimerMs = 0;
+        guardStepTimersMs.fill(0);
       });
     }
   });
@@ -648,6 +717,36 @@ async function main(): Promise<void> {
       );
     }
     hudEl.textContent = hudLines.join('\n');
+
+    // Per-frame audio state: listener rides the player, faces where the
+    // camera faces; the mutter follows the nearest searching guard; the
+    // birds start at dawn and keep going under the report.
+    const camForward = new THREE.Vector3();
+    followCamera.camera.getWorldDirection(camForward);
+    const forwardLen = Math.hypot(camForward.x, camForward.z) || 1;
+    let mutterSource: { x: number; z: number } | null = null;
+    let mutterDist = Infinity;
+    for (const g of huntState.guards) {
+      if (g.state === 'searching') {
+        const d = Math.hypot(g.x - huntState.player.x, g.z - huntState.player.z);
+        if (d < mutterDist) {
+          mutterDist = d;
+          mutterSource = { x: g.x, z: g.z };
+        }
+      }
+    }
+    audio.update(
+      {
+        listenerX: huntState.player.x,
+        listenerZ: huntState.player.z,
+        forwardX: camForward.x / forwardLen,
+        forwardZ: camForward.z / forwardLen,
+        zone: level.cells[Math.floor(huntState.player.z)]?.[Math.floor(huntState.player.x)]?.zone ?? null,
+        mutterSource,
+        dawn: huntState.mission.phase === 'dawn',
+      },
+      performance.now(),
+    );
 
     if (!warmedUp) {
       warmedUp = true;
