@@ -1,5 +1,13 @@
 import { LIGHTING } from '../config/lighting';
+import { stampClock } from '../systems/NightClock';
 import type { GuardEvent } from '../entities/GuardStateMachine';
+import type { MissionState } from '../sim/MissionState';
+import type { Rating } from '../report/rating';
+
+export interface ObjectiveTimestamp {
+  label: string;
+  atMs: number;
+}
 
 export interface TelemetrySummary {
   runtimeSeconds: number;
@@ -13,6 +21,12 @@ export interface TelemetrySummary {
   tailgatesClean: number;
   tailgatesSeen: number;
   boltsThrown: number;
+  /** The engagement rating, once the mission has ended, else null. */
+  rating: Rating | null;
+  /** Elapsed time on site at mission end, seconds, else null. */
+  timeOnSiteSeconds: number | null;
+  /** Per-objective completion times, in chronological order. */
+  objectiveTimestamps: ObjectiveTimestamp[];
 }
 
 /**
@@ -50,6 +64,9 @@ export class Telemetry {
   private tailgatesClean = 0;
   private tailgatesSeen = 0;
   private boltsThrown = 0;
+  private rating: Rating | null = null;
+  private timeOnSiteSeconds: number | null = null;
+  private objectiveTimestamps: ObjectiveTimestamp[] = [];
   private readonly log: string[] = [];
 
   recordTick(dtSeconds: number, playerLightLevel: number): void {
@@ -83,6 +100,37 @@ export class Telemetry {
   recordBoltThrown(): void {
     this.boltsThrown++;
     this.log.push(this.timestamp() + 'BOLT — thrown');
+  }
+
+  /**
+   * Fold the finished mission into the worksheet: the rating, the time on
+   * site, and the per-objective completion times (each stamped on the night
+   * clock). Read from the final MissionState, the deterministic source of
+   * truth, so the worksheet agrees with the Engagement Report exactly.
+   */
+  recordMissionEnd(mission: MissionState, rating: Rating, endMs: number): void {
+    this.rating = rating;
+    this.timeOnSiteSeconds = endMs / 1000;
+
+    const stamps: ObjectiveTimestamp[] = [];
+    if (mission.ingressAtMs !== null) {
+      stamps.push({ label: `ingress (${mission.ingressRoute ?? 'unknown'})`, atMs: mission.ingressAtMs });
+    }
+    if (mission.plantedAtMs !== null) {
+      stamps.push({ label: 'device planted', atMs: mission.plantedAtMs });
+    }
+    for (const [id, at] of Object.entries(mission.photos)) {
+      if (at !== null) {
+        stamps.push({ label: `photo (${id})`, atMs: at });
+      }
+    }
+    if (mission.exfilledAtMs !== null) {
+      stamps.push({ label: 'exfil', atMs: mission.exfilledAtMs });
+    }
+    stamps.sort((a, b) => a.atMs - b.atMs);
+    this.objectiveTimestamps = stamps;
+
+    this.log.push(this.timestamp() + `MISSION END — ${rating}, time on site ${(endMs / 1000).toFixed(1)}s`);
   }
 
   recordEvents(events: readonly GuardEvent[]): void {
@@ -120,6 +168,9 @@ export class Telemetry {
       tailgatesClean: this.tailgatesClean,
       tailgatesSeen: this.tailgatesSeen,
       boltsThrown: this.boltsThrown,
+      rating: this.rating,
+      timeOnSiteSeconds: this.timeOnSiteSeconds,
+      objectiveTimestamps: [...this.objectiveTimestamps],
     };
   }
 
@@ -139,6 +190,13 @@ export class Telemetry {
       `Ingress routes used: ${s.ingressRoutesUsed.length > 0 ? s.ingressRoutesUsed.join(', ') : '(none)'}`,
       `Tailgates: ${s.tailgatesAttempted} attempted (${s.tailgatesClean} clean, ${s.tailgatesSeen} seen)`,
       `Bolts thrown: ${s.boltsThrown}`,
+      `Rating: ${s.rating ?? '(mission in progress)'}`,
+      `Time on site: ${s.timeOnSiteSeconds !== null ? s.timeOnSiteSeconds.toFixed(1) + 's' : '(mission in progress)'}`,
+      '',
+      '## Objective timeline',
+      ...(s.objectiveTimestamps.length > 0
+        ? s.objectiveTimestamps.map((o) => `${stampClock(o.atMs)}  ${o.label}`)
+        : ['(no objectives completed)']),
       '',
       '## Event log',
       ...(this.log.length > 0 ? this.log : ['(no events)']),
