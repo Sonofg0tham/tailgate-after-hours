@@ -12,7 +12,8 @@
     "lint": "eslint .",
     "test": "vitest run",
     "lit-vs-dark": "vite-node scripts/lit-vs-dark.ts",
-    "sample-report": "vite-node scripts/sample-report.ts"
+    "sample-report": "vite-node scripts/sample-report.ts",
+    "balance-run": "vite-node scripts/balance-run.ts"
   },
   "dependencies": {
     "@fontsource/ibm-plex-mono": "^5.2.7",
