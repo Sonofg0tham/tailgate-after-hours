@@ -53,7 +53,14 @@ import { DoorPanel } from './entities/DoorPanel';
 import { Telemetry } from './telemetry/Telemetry';
 import { generateReport } from './report/generateReport';
 import { ReportView } from './report/ReportView';
-import { recordCompletion } from './systems/Progress';
+import { loadProgress, recordCompletion } from './systems/Progress';
+import { loadSettings, saveSettings, type GameSettings } from './systems/Settings';
+import { setMotionLevel } from './systems/Motion';
+import { setGridMinOverride } from './config/renderLighting';
+import { abandonMission } from './sim/MissionState';
+import { Kiosk } from './ui/Kiosk';
+import { PauseLanyard } from './ui/PauseLanyard';
+import { SettingsPanel } from './ui/SettingsPanel';
 import floor12 from './data/floor12.json';
 import guardsDataRaw from './data/guards.json';
 import staffDataRaw from './data/staff.json';
@@ -113,7 +120,8 @@ async function main(): Promise<void> {
   const lightGrid = buildLightGrid(level);
   // The extruder paints floor/wall vertex colours FROM the light grid — the
   // render-agrees-with-grid invariant, by construction (see Extruder.ts).
-  const extruded = extrudeLevel(level, lightGrid);
+  // `let`: the visibility-floor setting re-extrudes the visual live.
+  let extruded = extrudeLevel(level, lightGrid);
   scene.add(extruded.group);
 
   const lightGridMesh = buildLightGridMesh(level, lightGrid);
@@ -278,6 +286,15 @@ async function main(): Promise<void> {
   const guardStepTimersMs = guardsData.guards.map(() => 0);
   let detainImpactRemainingMs = 0;
   let shakeRemainingMs = 0;
+  // Phase 6 app flow: boot lands on the kiosk; the sim only advances while
+  // running; the pause lanyard freezes it; the report freezes it via
+  // reportShown + the mission-phase early return.
+  let appState: 'kiosk' | 'running' | 'paused' = 'kiosk';
+  let settings: GameSettings = loadSettings();
+  let shakeIntensityLive = settings.shakeIntensity;
+  let settingsOpen = false;
+  let settingsReturnTo: 'kiosk' | 'pause' = 'kiosk';
+  let prevStartHeld = false;
 
   const movement = new MovementController();
   const keyboard = new KeyboardState();
@@ -419,6 +436,158 @@ async function main(): Promise<void> {
   });
   window.addEventListener('mouseup', (e) => {
     if (e.button === 0) mouseHeld = false;
+  });
+
+  // --- Phase 6 flow functions (hoisted declarations; wired to the UI below).
+
+  /** Everything a fresh run needs, from either the kiosk or [ NEW ENGAGEMENT ]. Assist applies here — the label says so. */
+  function beginEngagement(): void {
+    kiosk.hide();
+    settingsPanel.hide();
+    settingsOpen = false;
+    reportView.hide();
+    huntEnv.guardSpeedScale = settings.assistMode ? 0.9 : 1;
+    huntState = freshHuntState();
+    telemetry = new Telemetry();
+    reportShown = false;
+    tick = 0;
+    prevDoorId = null;
+    playerStepTimerMs = 0;
+    guardStepTimersMs.fill(0);
+    detainedFlashRemainingMs = 0;
+    appState = 'running';
+    audio.unlock();
+  }
+
+  /** The engagement is over (exfil, dawn, or abandoned): file the report, persist, raise the document. */
+  function endEngagement(): void {
+    if (reportShown) {
+      return;
+    }
+    reportShown = true;
+    pause.hide();
+    appState = 'running'; // the report itself freezes the sim via reportShown + phase
+    const mission = huntState.mission;
+    const endMs = mission.exfilledAtMs ?? mission.abandonedAtMs ?? huntState.simTimeMs;
+    const report = generateReport(mission);
+    telemetry.recordMissionEnd(mission, report.rating, endMs);
+    recordCompletion(report.rating, Math.round(endMs / 1000), {
+      timeOnSite: report.summary.timeOnSite,
+      assist: (huntEnv.guardSpeedScale ?? 1) < 1,
+    });
+    audio.play('reportPrint');
+    reportView.show(report, {
+      onNewEngagement: () => {
+        audio.play('uiClick');
+        beginEngagement();
+      },
+      onSignOut: () => {
+        audio.play('uiClick');
+        reportView.hide();
+        showKiosk();
+      },
+    });
+  }
+
+  function showKiosk(): void {
+    appState = 'kiosk';
+    kiosk.show(loadProgress());
+  }
+
+  function togglePause(): void {
+    if (settingsOpen) {
+      closeSettings();
+      return;
+    }
+    if (reportShown || huntState.mission.phase !== 'infiltrating') {
+      return;
+    }
+    if (appState === 'running') {
+      appState = 'paused';
+      pause.show();
+    } else if (appState === 'paused') {
+      pause.hide();
+      appState = 'running';
+    }
+  }
+
+  function closeSettings(): void {
+    settingsPanel.hide();
+    settingsOpen = false;
+    if (settingsReturnTo === 'pause') {
+      pause.show();
+    } else {
+      kiosk.show(loadProgress());
+    }
+  }
+
+  /** Persist and apply a settings change — live wherever feasible. */
+  function applySettings(next: GameSettings): void {
+    const floorChanged =
+      next.visibilityFloor !== settings.visibilityFloor || next.highContrast !== settings.highContrast;
+    settings = next;
+    saveSettings(settings);
+    audio.setMasterVolume(settings.masterVolume);
+    setMotionLevel(settings.motionLevel);
+    shakeIntensityLive = settings.shakeIntensity;
+    document.documentElement.style.setProperty('--hud-scale', String(settings.hudScale));
+    document.body.classList.toggle('high-contrast', settings.highContrast);
+    if (floorChanged) {
+      // High contrast also raises the darkness floor — part of the same
+      // readability contract. Re-extrude the visual through the new curve;
+      // collision/wallBounds are untouched (geometry is identical).
+      const effectiveFloor = settings.highContrast ? Math.max(settings.visibilityFloor, 0.5) : settings.visibilityFloor;
+      setGridMinOverride(effectiveFloor);
+      scene.remove(extruded.group);
+      extruded = extrudeLevel(level, lightGrid);
+      extruded.setSurfaceTintDebug(debugState.surfaceTints);
+      extruded.setGridOverlay(debugState.gridOverlay);
+      scene.add(extruded.group);
+    }
+    // Assist mode applies at the next engagement (huntEnv is read in beginEngagement).
+  }
+
+  const settingsPanel = new SettingsPanel(
+    (next) => applySettings(next),
+    () => {
+      audio.play('uiClick');
+      closeSettings();
+    },
+  );
+  const kiosk = new Kiosk(
+    () => {
+      audio.unlock(); // the begin click is the autoplay gesture
+      audio.play('uiClick');
+      beginEngagement();
+    },
+    () => {
+      settingsReturnTo = 'kiosk';
+      settingsOpen = true;
+      kiosk.hide();
+      settingsPanel.show(settings);
+    },
+  );
+  const pause = new PauseLanyard(
+    () => togglePause(),
+    () => {
+      settingsReturnTo = 'pause';
+      settingsOpen = true;
+      pause.hide();
+      settingsPanel.show(settings);
+    },
+    () => {
+      // Abandon: the report files the run so far, stamped ABANDONED.
+      huntState = { ...huntState, mission: abandonMission(huntState.mission, huntState.simTimeMs) };
+      pause.hide();
+      endEngagement();
+    },
+  );
+
+  window.addEventListener('keydown', (event) => {
+    if (event.code === 'Escape') {
+      event.preventDefault();
+      togglePause();
+    }
   });
 
   const fixedLoop = new FixedTimestepLoop(FIXED_STEP_SECONDS, (deltaSeconds) => {
@@ -567,30 +736,10 @@ async function main(): Promise<void> {
       shakeRemainingMs = JUICE.shake.durationMs;
     }
 
-    // Mission just ended (exfil or dawn): fold the run into the telemetry
-    // worksheet, persist the best rating, and raise the Engagement Report.
+    // Mission just ended (exfil or dawn): file the report. Abandon reaches
+    // the same endEngagement directly from the pause lanyard.
     if (huntState.mission.phase !== 'infiltrating' && !reportShown) {
-      reportShown = true;
-      const mission = huntState.mission;
-      const endMs = mission.exfilledAtMs ?? huntState.simTimeMs;
-      const report = generateReport(mission);
-      telemetry.recordMissionEnd(mission, report.rating, endMs);
-      recordCompletion(report.rating, Math.round(endMs / 1000), {
-        timeOnSite: report.summary.timeOnSite,
-        assist: (huntEnv.guardSpeedScale ?? 1) < 1,
-      });
-      audio.play('reportPrint');
-      reportView.show(report, () => {
-        audio.play('uiClick');
-        reportView.hide();
-        huntState = freshHuntState();
-        telemetry = new Telemetry();
-        reportShown = false;
-        tick = 0;
-        prevDoorId = null;
-        playerStepTimerMs = 0;
-        guardStepTimersMs.fill(0);
-      });
+      endEngagement();
     }
   });
 
@@ -608,7 +757,20 @@ async function main(): Promise<void> {
 
   function renderOnce(frameDelta: number): void {
     animationPhaseMs += frameDelta * 1000;
-    fixedLoop.advance(frameDelta);
+    // The sim only advances mid-engagement: the kiosk and the pause lanyard
+    // freeze it entirely (the scene still renders behind them).
+    if (appState === 'running') {
+      fixedLoop.advance(frameDelta);
+    }
+
+    // Pad pause: Start (button 9) toggles the lanyard, edge-triggered.
+    const pads = navigator.getGamepads ? navigator.getGamepads() : [];
+    const pad = pads.find((p) => p !== null);
+    const startHeld = (pad?.buttons[9]?.value ?? 0) > 0.5;
+    if (startHeld && !prevStartHeld && appState !== 'kiosk') {
+      togglePause();
+    }
+    prevStartHeld = startHeld;
 
     player.model.position.set(huntState.player.x, 0, huntState.player.z);
     player.model.rotation.y = huntState.player.facingYaw;
@@ -694,10 +856,10 @@ async function main(): Promise<void> {
         const t = detainImpactRemainingMs / JUICE.detainImpact.durationMs; // 1 -> 0
         followCamera.camera.position.y -= JUICE.detainImpact.dipMetres * Math.sin(t * Math.PI);
       }
-      if (shakeRemainingMs > 0 && motionLevel() === 'full' && JUICE.shake.intensity > 0) {
+      if (shakeRemainingMs > 0 && motionLevel() === 'full' && shakeIntensityLive > 0) {
         const falloff = shakeRemainingMs / JUICE.shake.durationMs;
         const phase = (performance.now() / 1000) * JUICE.shake.frequencyHz * Math.PI * 2;
-        const amp = JUICE.shake.amplitudeMetres * JUICE.shake.intensity * falloff;
+        const amp = JUICE.shake.amplitudeMetres * shakeIntensityLive * falloff;
         followCamera.camera.position.x += Math.sin(phase) * amp;
         followCamera.camera.position.z += Math.cos(phase * 1.31) * amp;
       }
@@ -794,15 +956,28 @@ async function main(): Promise<void> {
     requestAnimationFrame(frame);
   }
 
+  // Boot: apply stored settings, land on the kiosk.
+  applySettings(settings);
+  showKiosk();
+
   requestAnimationFrame(frame);
 
-  // Verification hook: manually drives one render+sim frame without relying
-  // on requestAnimationFrame, which this test environment's browser
-  // automation throttles to near-zero on a backgrounded/unfocused tab (see
-  // the Phase 2 PR notes) — lets a screenshot/hook-based verification pass
-  // advance the game deterministically regardless.
+  // Verification hooks: __forceFrame manually drives one render+sim frame
+  // without relying on requestAnimationFrame, which this test environment's
+  // browser automation throttles to near-zero on a backgrounded/unfocused
+  // tab (see the Phase 2 PR notes); __begin/__pause/__abandon drive the
+  // Phase 6 flow the same way.
   Object.assign(window, {
     __forceFrame: (deltaSeconds = FIXED_STEP_SECONDS) => renderOnce(deltaSeconds),
+    __begin: () => beginEngagement(),
+    __pause: () => togglePause(),
+    __abandon: () => {
+      huntState = { ...huntState, mission: abandonMission(huntState.mission, huntState.simTimeMs) };
+      pause.hide();
+      endEngagement();
+    },
+    __appState: () => appState,
+    __applySettings: (partial: Partial<GameSettings>) => applySettings({ ...settings, ...partial }),
   });
 }
 
