@@ -1,0 +1,79 @@
+
+
+----- GHOST (real driven run) -----
+================ ENGAGEMENT REPORT ================
+MERIDIAN MUTUAL   //   MERIDIAN MUTUAL HQ — FLOOR 12
+SONOFG0THAM CONSULTING   //   REF ENG-2026-0710/NIGHT
+NIGHT ENGAGEMENT 01:00-05:00   //   10 JULY 2026
+
+RATING:  GHOST
+         No detections logged. On this evidence the client's CCTV budget is not money well spent.
+
+FINDINGS
+  F-01  [CRITICAL]  Rogue device planted on the server rack at 01:08. Device remained in place at exfil.
+  F-02  [HIGH]  Fire-stairs door propped open during the cleaning crew smoke break. Consultant entered unchallenged at 01:01.
+  F-03  [MEDIUM]  Executive corner-office workstation photographed at 01:09. Sensitive material left in the open.
+  F-04  [MEDIUM]  Password sticky note in the open-plan office photographed at 01:05. Sensitive material left in the open.
+  F-05  [LOW]  1 distraction device deployed to misdirect patrolling staff.
+
+CLIENT DETECTIONS
+  - None. Client security did not detect the assessment.
+
+SUMMARY
+  Time on site:  00:51
+  Alert reached: CALM
+  Secondaries:   2 of 2 photographed
+===================================================
+
+
+----- DETAINED -----
+================ ENGAGEMENT REPORT ================
+MERIDIAN MUTUAL   //   MERIDIAN MUTUAL HQ — FLOOR 12
+SONOFG0THAM CONSULTING   //   REF ENG-2026-0710/NIGHT
+NIGHT ENGAGEMENT 01:00-05:00   //   10 JULY 2026
+
+RATING:  DETAINED
+         Objective met, dignity less so. The trouser repair is itemised separately on the invoice.
+
+FINDINGS
+  F-01  [CRITICAL]  Rogue device planted on the server rack at 01:40. Device remained in place at exfil.
+  F-02  [HIGH]  Tailgated a staff member through the lobby badge gate at 01:06. Door dwell time (1.6s) permits unauthorised entry.
+  F-03  [MEDIUM]  Password sticky note in the open-plan office photographed at 01:32. Sensitive material left in the open.
+  F-04  [LOW]  2 distraction devices deployed to misdirect patrolling staff.
+
+CLIENT DETECTIONS
+  - Consultant was observed by site staff during the engagement.
+  - Consultant detained by client staff on 1 occasion. Letter of authorisation presented.
+  - Full site lockdown initiated. Badge access suspended building-wide.
+
+SUMMARY
+  Time on site:  03:30
+  Alert reached: LOCKDOWN
+  Secondaries:   1 of 2 photographed
+===================================================
+
+
+----- DAWN -----
+================ ENGAGEMENT REPORT ================
+MERIDIAN MUTUAL   //   MERIDIAN MUTUAL HQ — FLOOR 12
+SONOFG0THAM CONSULTING   //   REF ENG-2026-0710/NIGHT
+NIGHT ENGAGEMENT 01:00-05:00   //   10 JULY 2026
+
+  ** ENGAGEMENT EXPIRED AT DAWN — DEVICE PLANTED, CONSULTANT DID NOT CLEAR THE SITE **
+
+RATING:  DAWN
+         Dawn arrived before the consultant cleared the site. The night shift clocked off. The job did not.
+
+FINDINGS
+  F-01  [CRITICAL]  Rogue device planted on the server rack at 04:00. Consultant did not clear the site before dawn; device recovery by the client is likely.
+  F-02  [HIGH]  Fire-stairs door propped open during the cleaning crew smoke break. Consultant entered unchallenged at 01:03.
+
+CLIENT DETECTIONS
+  - Consultant was observed by site staff during the engagement.
+  - Site alert level raised to CAUTIOUS.
+
+SUMMARY
+  Time on site:  12:00
+  Alert reached: CAUTIOUS
+  Secondaries:   0 of 2 photographed
+===================================================

@@ -13,15 +13,19 @@ import { AnimationController } from './character/AnimationController';
 import { GuardAnimationController } from './character/GuardAnimationController';
 import { StaffAnimationController } from './character/StaffAnimationController';
 import { MovementController } from './input/MovementController';
+import { KeyboardState } from './input/KeyboardInput';
 import { ThrowInput } from './input/ThrowInput';
+import { InteractInput } from './input/InteractInput';
 import { FollowCamera } from './camera/FollowCamera';
 import { FpsMeter } from './perf/FpsMeter';
 import { applyPaletteToCss, PALETTE_HEX } from './config/palette';
 import { DETECTION } from './config/detection';
 import { THROW } from './config/throw';
+import { MISSION } from './config/mission';
 import { FixedTimestepLoop } from './sim/FixedTimestepLoop';
 import { InputRecorder, type InputLogEntry } from './sim/InputLog';
 import { stepHunt, type HuntEnvironment, type HuntState } from './sim/stepHunt';
+import { createMissionState, type MissionState } from './sim/MissionState';
 import type { MovementIntent } from './input/InputState';
 import { noiseRadius } from './systems/Noise';
 import { NoiseRingRenderer } from './systems/NoiseRingRenderer';
@@ -40,11 +44,38 @@ import { TorchBeam } from './entities/TorchBeam';
 import { DebugVisionCone } from './entities/DebugVisionCone';
 import { DoorPanel } from './entities/DoorPanel';
 import { Telemetry } from './telemetry/Telemetry';
+import { generateReport } from './report/generateReport';
+import { ReportView } from './report/ReportView';
+import { recordCompletion } from './systems/Progress';
 import floor12 from './data/floor12.json';
 import guardsDataRaw from './data/guards.json';
 import staffDataRaw from './data/staff.json';
 
 const FIXED_STEP_SECONDS = 1 / 60;
+
+/** The current-objective HUD line: plant, then exfil, plus a photo tally. */
+function objectiveLine(mission: MissionState): string {
+  const photosDone = MISSION.photos.filter((p) => mission.photos[p.id] !== null).length;
+  const photoTally = `  ·  photos ${photosDone}/${MISSION.photos.length}`;
+  if (mission.plantedAtMs === null) {
+    return `OBJECTIVE: plant the device (server room)${photoTally}`;
+  }
+  if (mission.exfilledAtMs === null) {
+    return `OBJECTIVE: exfil to the lift lobby${photoTally}`;
+  }
+  return `OBJECTIVE: complete${photoTally}`;
+}
+
+/** A progress readout while an interact hold is running, else blank. */
+function holdLine(mission: MissionState): string {
+  if (mission.holdObjectiveId === null || mission.holdProgressMs <= 0) {
+    return '';
+  }
+  const isPlant = mission.holdObjectiveId === MISSION.plant.id;
+  const holdMs = isPlant ? MISSION.plantHoldMs : MISSION.photoHoldMs;
+  const pct = Math.min(100, Math.round((mission.holdProgressMs / holdMs) * 100));
+  return `${isPlant ? 'PLANTING' : 'PHOTOGRAPHING'}... ${pct}%`;
+}
 
 async function main(): Promise<void> {
   applyPaletteToCss();
@@ -134,6 +165,25 @@ async function main(): Promise<void> {
     return { def, panel };
   });
 
+  // Objective markers: a soft amber pillar over each objective point so the
+  // player can see where to go. The plant/photo markers hide once their
+  // objective is done; the exfil marker only appears once the device is
+  // planted. Driven by the same MISSION config as the mechanic, so they can
+  // never drift apart.
+  function objectiveMarker(x: number, z: number, color: number): THREE.Mesh {
+    const mesh = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.14, 0.14, 2.2, 12),
+      new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.5 }),
+    );
+    mesh.position.set(x, 1.1, z);
+    scene.add(mesh);
+    return mesh;
+  }
+  const plantMarker = objectiveMarker(MISSION.plant.x, MISSION.plant.z, PALETTE_HEX.amber);
+  const photoMarkers = MISSION.photos.map((p) => ({ id: p.id, mesh: objectiveMarker(p.x, p.z, 0x8a94a2) }));
+  const exfilMarker = objectiveMarker(MISSION.exfil.x, MISSION.exfil.z, PALETTE_HEX.amber);
+  exfilMarker.visible = false;
+
   const boltMeshGeometry = new THREE.SphereGeometry(0.08, 8, 8);
   const boltMeshMaterial = new THREE.MeshStandardMaterial({ color: 0xc7cdd4 });
   const boltMeshes = new Map<number, THREE.Mesh>();
@@ -148,6 +198,7 @@ async function main(): Promise<void> {
     lightGrid,
     wallBounds: extruded.wallBounds,
     routes: guardsData.guards.map((g) => g.route),
+    guardRoutes: guardsData.guards,
     staffRoutes: staffData.staff,
   };
 
@@ -164,6 +215,7 @@ async function main(): Promise<void> {
       doors: level.doors.map(createDoorState),
       staff: staffData.staff.map(createStaffState),
       bolts: [],
+      mission: createMissionState(),
     };
   }
 
@@ -176,11 +228,15 @@ async function main(): Promise<void> {
   let animationPhaseMs = 0;
   let prevDoorId: string | null = null;
   let drivenIntent: MovementIntent | null = null;
+  let drivenInteract: boolean | null = null;
 
   const movement = new MovementController();
+  const keyboard = new KeyboardState();
   const fps = new FpsMeter();
-  const telemetry = new Telemetry();
+  let telemetry = new Telemetry(); // reassigned on [ NEW ENGAGEMENT ]
   const clock = new THREE.Clock();
+  const reportView = new ReportView();
+  let reportShown = false;
 
   const debugState = createDebugToggles((state) => {
     extruded.setGridOverlay(state.gridOverlay);
@@ -267,12 +323,21 @@ async function main(): Promise<void> {
     },
     __clearDrivenIntent: () => {
       drivenIntent = null;
+      drivenInteract = null;
     },
     __throwBolt: (targetX: number, targetZ: number) => {
       huntState = {
         ...huntState,
         bolts: [...huntState.bolts, createBolt(huntState.bolts.length, huntState.player.x, huntState.player.z, targetX, targetZ)],
       };
+    },
+    // Phase 4 verification hooks. __missionState reads the objective/checkpoint/
+    // exfil/dawn progress; __driveInteract holds (or releases) the interact
+    // control so a plant/photo hold can be driven deterministically alongside
+    // __driveIntent, without a keyboard attached in this throttled environment.
+    __missionState: () => huntState.mission,
+    __driveInteract: (held: boolean) => {
+      drivenInteract = held;
     },
   });
 
@@ -306,27 +371,38 @@ async function main(): Promise<void> {
   const fixedLoop = new FixedTimestepLoop(FIXED_STEP_SECONDS, (deltaSeconds) => {
     const dtMs = deltaSeconds * 1000;
 
+    // The detain flash is now purely cosmetic: the checkpoint restart already
+    // happened deterministically inside stepHunt (restartAtCheckpoint), so the
+    // sim just pauses briefly on the red frame, then resumes at the checkpoint.
     if (detainedFlashRemainingMs > 0) {
       detainedFlashRemainingMs = Math.max(0, detainedFlashRemainingMs - dtMs);
-      if (detainedFlashRemainingMs === 0) {
-        huntState = freshHuntState();
-      }
+      return;
+    }
+
+    // The mission is over (exfilled or caught by dawn): freeze the sim until
+    // [ NEW ENGAGEMENT ] starts a fresh run.
+    if (huntState.mission.phase !== 'infiltrating') {
       return;
     }
 
     let intent: MovementIntent;
     let throwAction: { x: number; z: number } | null = null;
+    let interactHeld: boolean;
     if (intentFrozen) {
       intent = { directionX: 0, directionZ: 0, speed: 'idle', crouched: false, device: lastIntent.device };
+      interactHeld = drivenInteract ?? false;
     } else if (drivenIntent) {
       intent = drivenIntent;
+      interactHeld = drivenInteract ?? false;
     } else if (replayQueue && replayQueue.length > 0) {
       const entry = replayQueue.shift()!;
       intent = entry.intent;
       throwAction = entry.throwAction;
+      interactHeld = entry.interactHeld;
     } else {
       replayQueue = null;
       intent = movement.update();
+      interactHeld = InteractInput.read(keyboard);
       const throwInput = ThrowInput.read();
       const throwHeld = throwInput.held || mouseHeld;
       if (throwHeld && !prevThrowHeld && huntState.bolts.length < THROW.boltCount) {
@@ -336,11 +412,11 @@ async function main(): Promise<void> {
         });
       }
       prevThrowHeld = throwHeld;
-      recorder.record(tick++, intent, throwAction);
+      recorder.record(tick++, intent, throwAction, interactHeld);
     }
 
     const boltsBefore = huntState.bolts;
-    const result = stepHunt(huntState, intent, throwAction, huntEnv, deltaSeconds, dtMs);
+    const result = stepHunt(huntState, intent, throwAction, interactHeld, huntEnv, deltaSeconds, dtMs);
     huntState = result.state;
     if (!intentFrozen) {
       lastIntent = intent;
@@ -387,6 +463,25 @@ async function main(): Promise<void> {
 
     if (detainedFlashRemainingMs === 0 && result.events.some((e: GuardEvent) => e.type === 'detain')) {
       detainedFlashRemainingMs = DETECTION.timing.detainedFlashMs;
+    }
+
+    // Mission just ended (exfil or dawn): fold the run into the telemetry
+    // worksheet, persist the best rating, and raise the Engagement Report.
+    if (huntState.mission.phase !== 'infiltrating' && !reportShown) {
+      reportShown = true;
+      const mission = huntState.mission;
+      const endMs = mission.exfilledAtMs ?? huntState.simTimeMs;
+      const report = generateReport(mission);
+      telemetry.recordMissionEnd(mission, report.rating, endMs);
+      recordCompletion(report.rating, Math.round(endMs / 1000));
+      reportView.show(report, () => {
+        reportView.hide();
+        huntState = freshHuntState();
+        telemetry = new Telemetry();
+        reportShown = false;
+        tick = 0;
+        prevDoorId = null;
+      });
     }
   });
 
@@ -446,6 +541,18 @@ async function main(): Promise<void> {
       panel.update(doorState !== undefined && isDoorOpen(doorState, huntState.simTimeMs, lockdown));
     }
 
+    // Objective markers: hide each once its objective is done; the exfil
+    // marker only appears once the device is planted.
+    const mission = huntState.mission;
+    plantMarker.visible = mission.plantedAtMs === null;
+    for (const marker of photoMarkers) {
+      marker.mesh.visible = mission.photos[marker.id] === null;
+    }
+    exfilMarker.visible = mission.plantedAtMs !== null && mission.exfilledAtMs === null;
+    const markerBob = 0.15 * Math.sin(animationPhaseMs / 400);
+    plantMarker.position.y = 1.1 + markerBob;
+    exfilMarker.position.y = 1.1 + markerBob;
+
     const activeBoltIds = new Set<number>();
     for (const bolt of huntState.bolts) {
       if (bolt.landed) continue; // spent bolts are just a marker in sim state, nothing to draw
@@ -479,13 +586,15 @@ async function main(): Promise<void> {
 
     const currentFps = fps.tick();
     const hudLines = [
+      `${nightClockLabel(huntState.simTimeMs)}   ${objectiveLine(mission)}`,
+      holdLine(mission),
+      '',
       `fps ${currentFps.toFixed(0)} (worst ${fps.getWorstFps().toFixed(0)})`,
       `speed ${lastIntent.speed}${lastIntent.crouched ? ' (crouched)' : ''}`,
       `noise ${radius.toFixed(1)}m`,
       `device ${lastIntent.device}`,
       `suspicion ${maxSuspicion.toFixed(0)}`,
       `alert level ${huntState.alertLevel.level}`,
-      nightClockLabel(),
       `sim ${(huntState.simTimeMs / 1000).toFixed(1)}s`,
       `bolts ${huntState.bolts.length}/${THROW.boltCount}`,
       ...huntState.doors.map((d) => `${d.id}: ${isDoorOpen(d, huntState.simTimeMs, lockdown) ? 'open' : 'shut'}`),

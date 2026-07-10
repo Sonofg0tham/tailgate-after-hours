@@ -2,11 +2,15 @@ import { describe, expect, it } from 'vitest';
 import { parseLevel, type LevelData } from '../world/level';
 import { extrudeLevel } from '../world/Extruder';
 import { buildLightGrid } from '../systems/LightModel';
-import { createDoorState } from '../systems/DoorState';
+import { createDoorState, doorOpenLookup } from '../systems/DoorState';
+import { findPath } from '../systems/Pathfinding';
 import { InputRecorder, replay, replayHunt, type InputLog } from './InputLog';
-import type { HuntEnvironment, HuntState } from './stepHunt';
-import { createGuardState, type GuardsData } from '../entities/GuardState';
+import { stepHunt, type HuntEnvironment, type HuntState } from './stepHunt';
+import { createGuardState, type GuardsData, type GuardState } from '../entities/GuardState';
 import { createStaffState, type StaffData } from '../entities/StaffState';
+import { createMissionState } from './MissionState';
+import { decideRating } from '../report/rating';
+import { MISSION } from '../config/mission';
 import type { MovementIntent } from '../input/InputState';
 import type { PlayerState } from './PlayerState';
 import floor12 from '../data/floor12.json';
@@ -50,7 +54,7 @@ describe('replay determinism (seed + input log)', () => {
     const log = scriptedRun();
     const divergent: InputLog = {
       ...log,
-      entries: [{ tick: 0, intent: intent(1, 0, 'run'), throwAction: null }, ...log.entries],
+      entries: [{ tick: 0, intent: intent(1, 0, 'run'), throwAction: null, interactHeld: false }, ...log.entries],
     };
     const baseline = replay(log, extruded.wallBounds);
     const divergedResult = replay(divergent, extruded.wallBounds);
@@ -75,6 +79,7 @@ describe('replay determinism with guards (Phase 2)', () => {
     lightGrid,
     wallBounds: extruded.wallBounds,
     routes: guardRoutes.map((g) => g.route),
+    guardRoutes,
     staffRoutes: (staffData as StaffData).staff,
   };
   const huntStart: HuntState = {
@@ -85,6 +90,7 @@ describe('replay determinism with guards (Phase 2)', () => {
     doors: level.doors.map(createDoorState),
     staff: (staffData as StaffData).staff.map(createStaffState),
     bolts: [],
+    mission: createMissionState(),
   };
 
   it('guards have no input of their own, yet replaying the same log reproduces them byte-identically', () => {
@@ -98,7 +104,7 @@ describe('replay determinism with guards (Phase 2)', () => {
     const log = scriptedRun();
     const divergent: InputLog = {
       ...log,
-      entries: [{ tick: 0, intent: intent(1, 0, 'run'), throwAction: null }, ...log.entries],
+      entries: [{ tick: 0, intent: intent(1, 0, 'run'), throwAction: null, interactHeld: false }, ...log.entries],
     };
     const baseline = replayHunt(log, huntStart, env);
     const diverged = replayHunt(divergent, huntStart, env);
@@ -122,6 +128,7 @@ describe('replay determinism with a door, a throw, and an ingress window (Phase 
     lightGrid,
     wallBounds: extruded.wallBounds,
     routes: guardRoutes.map((g) => g.route),
+    guardRoutes,
     staffRoutes: (staffData as StaffData).staff,
   };
 
@@ -138,6 +145,7 @@ describe('replay determinism with a door, a throw, and an ingress window (Phase 
       doors: level.doors.map(createDoorState),
       staff: (staffData as StaffData).staff.map(createStaffState),
       bolts: [],
+      mission: createMissionState(),
     };
   }
 
@@ -180,5 +188,151 @@ describe('replay determinism with a door, a throw, and an ingress window (Phase 
     const withoutThrow = replayHunt(recorder.toLog(), start, env);
 
     expect(withThrow.bolts).not.toEqual(withoutThrow.bolts);
+  });
+});
+
+describe('replay determinism over a full mission (Phase 4)', () => {
+  const lightGrid = buildLightGrid(level);
+
+  // A guard-free, staff-free floor: this test proves the MISSION fold is
+  // deterministic (plant + exfil), not guard behaviour (already covered
+  // above). A pathfinding follower drives the real sim from the reception
+  // spawn, ingresses through whichever dynamic door opens first, walks to the
+  // rack, holds the 3s plant, then walks back out to the lift lobby — waiting
+  // deterministically whenever a door it needs is shut. We record every input,
+  // then assert the recorded log replays byte-identically.
+  const env: HuntEnvironment = {
+    level,
+    lightGrid,
+    wallBounds: extruded.wallBounds,
+    routes: [],
+    guardRoutes: [],
+    staffRoutes: [],
+  };
+
+  const IDLE = intent(0, 0, 'idle');
+  const PLANT_STAND = { x: 32, y: 3 }; // walkable floor next to the rack (the plant point itself is solid)
+  const EXFIL_STAND = { x: 6, y: 15 };
+
+  function missionStart(): HuntState {
+    return {
+      player: { x: 3.5, z: 12.5, facingYaw: 0 }, // reception, just south of the fire-stairs door
+      guards: [],
+      alertLevel: { level: 0, msSinceIncident: 0 },
+      simTimeMs: 0,
+      doors: level.doors.map(createDoorState),
+      staff: [],
+      bolts: [],
+      mission: createMissionState(),
+    };
+  }
+
+  function steer(state: HuntState, tx: number, tz: number): MovementIntent {
+    const dx = tx - state.player.x;
+    const dz = tz - state.player.z;
+    const d = Math.hypot(dx, dz);
+    if (d < 1e-6) {
+      return IDLE;
+    }
+    return { directionX: dx / d, directionZ: dz / d, speed: 'walk', crouched: false, device: 'keyboard' };
+  }
+
+  /**
+   * Path to a walkable stand cell, then close the last bit straight at the
+   * point (which may itself be solid, like the rack). Idle when the route is
+   * blocked — a shut door — rather than walking into a wall, so the follower
+   * waits deterministically for the next open window.
+   */
+  function driveTo(state: HuntState, stand: { x: number; y: number }, px: number, pz: number): MovementIntent {
+    const overrides = doorOpenLookup(level, state.doors, state.simTimeMs, false);
+    const path = findPath(level, { x: Math.floor(state.player.x), y: Math.floor(state.player.z) }, stand, overrides);
+    if (!path) {
+      return IDLE;
+    }
+    if (path.length >= 2) {
+      return steer(state, path[1].x + 0.5, path[1].y + 0.5);
+    }
+    return steer(state, px, pz);
+  }
+
+  /** Drive the whole mission, returning the recorded log, the start state, and the live final state. */
+  function driveFullMission(): { log: InputLog; start: HuntState; finalState: HuntState } {
+    const start = missionStart();
+    let state = start;
+    const recorder = new InputRecorder('FULL-MISSION-SEED', STEP_SECONDS, start.player);
+
+    let tick = 0;
+    for (let i = 0; i < 12000 && state.mission.phase === 'infiltrating'; i++) {
+      let intentThisTick: MovementIntent;
+      let interactHeld = false;
+
+      if (state.mission.plantedAtMs === null) {
+        const dPlant = Math.hypot(state.player.x - MISSION.plant.x, state.player.z - MISSION.plant.z);
+        if (dPlant <= MISSION.interactRangeMetres) {
+          intentThisTick = IDLE;
+          interactHeld = true; // hold to plant
+        } else {
+          intentThisTick = driveTo(state, PLANT_STAND, MISSION.plant.x, MISSION.plant.z);
+        }
+      } else {
+        intentThisTick = driveTo(state, EXFIL_STAND, MISSION.exfil.x, MISSION.exfil.z);
+      }
+
+      recorder.record(tick++, intentThisTick, null, interactHeld);
+      state = stepHunt(state, intentThisTick, null, interactHeld, env, STEP_SECONDS, STEP_SECONDS * 1000).state;
+    }
+
+    return { log: recorder.toLog(), start, finalState: state };
+  }
+
+  it('drives ingress -> plant -> exfil to completion, and the recorded log replays byte-identically', () => {
+    const { log, start, finalState } = driveFullMission();
+
+    // The drive actually finished the job.
+    expect(finalState.mission.phase).toBe('exfilled');
+    expect(finalState.mission.plantedAtMs).not.toBeNull();
+    expect(finalState.mission.ingressRoute).not.toBeNull();
+
+    // Two replays of the recorded log are identical to each other and to the live drive.
+    const replayA = replayHunt(log, start, env);
+    const replayB = replayHunt(log, start, env);
+    expect(replayA).toEqual(replayB);
+    expect(replayA).toEqual(finalState);
+
+    // A clean, guard-free run rates GHOST, and that is stable across replay.
+    expect(decideRating(replayA.mission).rating).toBe('GHOST');
+  });
+
+  it('a detain through the fold restarts at the checkpoint, preserving the plant and alert while incrementing detains', () => {
+    // Player standing on the checkpoint with a guard already in contact range,
+    // the device planted and the building in lockdown — one tick emits a detain
+    // and the deterministic restart fires.
+    const checkpoint = { x: 32.5, z: 3.5 };
+    const guard: GuardState = { ...createGuardState((guardsData as GuardsData).guards[0]), x: checkpoint.x, z: checkpoint.z };
+    const detainEnv: HuntEnvironment = {
+      level,
+      lightGrid,
+      wallBounds: extruded.wallBounds,
+      routes: [(guardsData as GuardsData).guards[0].route],
+      guardRoutes: [(guardsData as GuardsData).guards[0]],
+      staffRoutes: [],
+    };
+    const state: HuntState = {
+      player: { x: checkpoint.x, z: checkpoint.z, facingYaw: 0 },
+      guards: [guard],
+      alertLevel: { level: 2, msSinceIncident: 0 },
+      simTimeMs: 40_000,
+      doors: level.doors.map(createDoorState),
+      staff: [],
+      bolts: [],
+      mission: { ...createMissionState(), plantedAtMs: 8000, checkpoint, detains: 0, maxAlertLevel: 2 },
+    };
+
+    const after = stepHunt(state, intent(0, 0, 'idle'), null, false, detainEnv, STEP_SECONDS, STEP_SECONDS * 1000);
+    expect(after.events.some((e) => e.type === 'detain')).toBe(true);
+    expect(after.state.mission.detains).toBe(1); // incremented
+    expect(after.state.mission.plantedAtMs).toBe(8000); // plant preserved
+    expect(after.state.alertLevel.level).toBe(2); // alert preserved
+    expect(after.state.player).toEqual({ x: checkpoint.x, z: checkpoint.z, facingYaw: 0 }); // back at the checkpoint
   });
 });

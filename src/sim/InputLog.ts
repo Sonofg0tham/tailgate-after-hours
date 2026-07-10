@@ -9,6 +9,8 @@ export interface InputLogEntry {
   intent: MovementIntent;
   /** A bolt released this tick, already resolved to a landing point (src/systems/ThrowAim.ts), or null. */
   throwAction: { x: number; z: number } | null;
+  /** Whether the interact control was held this tick (hold-to-plant / hold-to-photograph). */
+  interactHeld: boolean;
 }
 
 /**
@@ -36,8 +38,13 @@ export class InputRecorder {
     private readonly startState: PlayerState,
   ) {}
 
-  record(tick: number, intent: MovementIntent, throwAction: { x: number; z: number } | null = null): void {
-    this.entries.push({ tick, intent, throwAction });
+  record(
+    tick: number,
+    intent: MovementIntent,
+    throwAction: { x: number; z: number } | null = null,
+    interactHeld = false,
+  ): void {
+    this.entries.push({ tick, intent, throwAction, interactHeld });
   }
 
   toLog(): InputLog {
@@ -67,7 +74,7 @@ export function replay(log: InputLog, walls: readonly WallBounds[]): PlayerState
 export function replayHunt(log: InputLog, startState: HuntState, env: HuntEnvironment): HuntState {
   let state = startState;
   for (const entry of log.entries) {
-    state = stepHunt(state, entry.intent, entry.throwAction, env, log.stepSeconds, log.stepSeconds * 1000).state;
+    state = stepHunt(state, entry.intent, entry.throwAction, entry.interactHeld, env, log.stepSeconds, log.stepSeconds * 1000).state;
   }
   return state;
 }

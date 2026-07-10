@@ -7,8 +7,10 @@ import { stepStaff } from '../systems/StaffMovement';
 import { stepBolt } from '../systems/BoltFlight';
 import { createBolt, type BoltState } from '../entities/BoltState';
 import { applyStaffBadges, closedDoorWallBounds, doorOpenLookup, type DoorRuntimeState } from '../systems/DoorState';
-import type { GuardState, PatrolWaypoint } from '../entities/GuardState';
+import { stepMission, restartAtCheckpoint } from './stepMission';
+import type { GuardRoute, GuardState, PatrolWaypoint } from '../entities/GuardState';
 import type { StaffRoute, StaffState } from '../entities/StaffState';
+import type { MissionState } from './MissionState';
 import type { PlayerState } from './PlayerState';
 import type { MovementIntent } from '../input/InputState';
 import { surfaceAt, type ParsedLevel } from '../world/level';
@@ -29,6 +31,8 @@ export interface HuntState {
   staff: StaffState[];
   /** Every bolt ever thrown this run, landed ones kept as spent markers. Length also doubles as "bolts thrown so far" against THROW.boltCount. */
   bolts: BoltState[];
+  /** Objective/checkpoint/exfil/dawn progress — see src/sim/MissionState.ts. Lives here so replay reproduces the whole mission. */
+  mission: MissionState;
 }
 
 export interface HuntEnvironment {
@@ -37,6 +41,8 @@ export interface HuntEnvironment {
   wallBounds: readonly WallBounds[];
   /** Each guard's route, indexed the same as `state.guards`. */
   routes: PatrolWaypoint[][];
+  /** Each guard's full route def (id + start index), for resetting guards on a checkpoint restart. Indexed the same as `state.guards`. */
+  guardRoutes: GuardRoute[];
   /** Each cleaner's def (route + badges), indexed the same as `state.staff`. */
   staffRoutes: StaffRoute[];
 }
@@ -56,6 +62,7 @@ export function stepHunt(
   state: HuntState,
   intent: MovementIntent,
   throwAction: { x: number; z: number } | null,
+  interactHeld: boolean,
   env: HuntEnvironment,
   dtSeconds: number,
   dtMs: number,
@@ -101,7 +108,37 @@ export function stepHunt(
   const simTimeMs = state.simTimeMs + dtMs;
   const doors = applyStaffBadges(env.level, state.doors, staff, env.staffRoutes, simTimeMs, lockdown);
 
-  return { state: { player, guards, alertLevel, simTimeMs, doors, staff, bolts }, events: allEvents };
+  const mission = stepMission(state.mission, player, intent, {
+    level: env.level,
+    doorOverrides,
+    guards,
+    staff,
+    alertLevel: alertLevel.level,
+    simTimeMs,
+    dtMs,
+    interactHeld,
+    boltThrownThisTick: bolts.length > state.bolts.length,
+    events: allEvents,
+  });
+
+  const stepped: HuntState = { player, guards, alertLevel, simTimeMs, doors, staff, bolts, mission };
+
+  // A detain restarts at the last checkpoint — but only while the mission is
+  // still live (an exfil/dawn on the same tick wins). The restart preserves
+  // alert, clock and every mission fact, incrementing the detain tally, so
+  // the whole checkpoint loop stays inside the deterministic fold.
+  if (mission.phase === 'infiltrating' && allEvents.some((e) => e.type === 'detain')) {
+    return {
+      state: restartAtCheckpoint(stepped, {
+        level: env.level,
+        guardRoutes: env.guardRoutes,
+        staffRoutes: env.staffRoutes,
+      }),
+      events: allEvents,
+    };
+  }
+
+  return { state: stepped, events: allEvents };
 }
 
 /**
