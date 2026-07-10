@@ -56,6 +56,8 @@ export interface StepGuardContext {
   alertLevel: 0 | 1 | 2;
   dtSeconds: number;
   dtMs: number;
+  /** Assist mode (Phase 6): every guard speed multiplies by this. Default 1; assist sets 0.9. Part of the environment, so replays are pure. */
+  guardSpeedScale?: number;
   /** Current open/closed state of the dynamic badge/smokers/lift doors — see src/world/level.ts's DoorOpenLookup. */
   doorOverrides?: DoorOpenLookup;
   /**
@@ -189,7 +191,7 @@ function handlePatrol(guard: GuardState, ctx: StepGuardContext, newSuspicion: nu
     return { guard: { ...guard, pauseRemainingMs: remaining, facingYaw, suspicion: newSuspicion, msInState }, events: [] };
   }
 
-  const steer = steerToward(guard.x, guard.z, waypoint.x + 0.5, waypoint.y + 0.5, GUARD.patrolSpeed, ctx);
+  const steer = steerToward(guard.x, guard.z, waypoint.x + 0.5, waypoint.y + 0.5, baseGuardSpeed(ctx), ctx);
   const facingYaw = stepFacing(guard.facingYaw, steer.arrived ? null : steer.headingYaw, ctx.dtSeconds);
 
   if (steer.arrived) {
@@ -248,7 +250,7 @@ function handleSearching(guard: GuardState, ctx: StepGuardContext, newSuspicion:
     return { guard: { ...guard, facingYaw, path: null, suspicion: newSuspicion, msInState }, events: [] };
   }
 
-  const pathed = followPath(guard, ctx, targetX, targetZ, GUARD.patrolSpeed);
+  const pathed = followPath(guard, ctx, targetX, targetZ, baseGuardSpeed(ctx));
   return { guard: { ...pathed, suspicion: newSuspicion, msInState }, events: [] };
 }
 
@@ -274,7 +276,7 @@ function handleAlert(guard: GuardState, ctx: StepGuardContext, newSuspicion: num
     return { guard: result.guard, events: [...events, ...result.events] };
   }
 
-  const speed = GUARD.patrolSpeed * DETECTION.chaseSpeedMultiplier * alertSpeedMultiplier(ctx.alertLevel);
+  const speed = baseGuardSpeed(ctx) * DETECTION.chaseSpeedMultiplier * alertSpeedMultiplier(ctx.alertLevel);
   const pathed = followPath(guard, ctx, ctx.player.x, ctx.player.z, speed);
 
   return {
@@ -294,7 +296,7 @@ function handleSweep(guard: GuardState, ctx: StepGuardContext, newSuspicion: num
   }
 
   const waypoint = ctx.route[guard.routeIndex];
-  const speed = GUARD.patrolSpeed * GUARD.sweepSpeedMultiplier;
+  const speed = baseGuardSpeed(ctx) * GUARD.sweepSpeedMultiplier;
   const steer = steerToward(guard.x, guard.z, waypoint.x + 0.5, waypoint.y + 0.5, speed, ctx);
   const facingYaw = stepFacing(guard.facingYaw, steer.arrived ? null : steer.headingYaw, ctx.dtSeconds);
 
@@ -404,6 +406,11 @@ function findNearestWaypointIndex(route: readonly PatrolWaypoint[], x: number, z
 /** Ported exactly from Tailgate's curious look-around: base facing plus a sine sweep. */
 function lookAroundYaw(baseYaw: number, msInState: number): number {
   return baseYaw + Math.sin(msInState / GUARD.lookAround.periodMs) * GUARD.lookAround.amplitudeRadians;
+}
+
+/** The patrol speed under the environment's assist scale (default 1) — every guard pace derives from this. */
+function baseGuardSpeed(ctx: StepGuardContext): number {
+  return GUARD.patrolSpeed * (ctx.guardSpeedScale ?? 1);
 }
 
 function alertSpeedMultiplier(alertLevel: 0 | 1 | 2): number {

@@ -1,8 +1,8 @@
 import { JUICE } from '../config/juice';
 import type { ReportModel, Rating } from './generateReport';
 
-/** DETAINED and DAWN are the outcomes that went wrong — shown in alarm red; the rest read amber. */
-const BAD_RATINGS: ReadonlySet<Rating> = new Set<Rating>(['DETAINED', 'DAWN']);
+/** DETAINED, DAWN and ABANDONED are the outcomes that went wrong — shown in alarm red; the rest read amber. */
+const BAD_RATINGS: ReadonlySet<Rating> = new Set<Rating>(['DETAINED', 'DAWN', 'ABANDONED']);
 
 /**
  * Renders the Engagement Report model into the #report overlay — the signature

@@ -303,6 +303,35 @@ describe('replay determinism over a full mission (Phase 4)', () => {
     expect(decideRating(replayA.mission).rating).toBe('GHOST');
   });
 
+  it('assist mode (guardSpeedScale 0.9) replays byte-identically and diverges from full speed', () => {
+    // A guard-inclusive run so the scale actually matters.
+    const guardRoutes = (guardsData as GuardsData).guards;
+    const baseEnv: HuntEnvironment = {
+      level,
+      lightGrid,
+      wallBounds: extruded.wallBounds,
+      routes: guardRoutes.map((g) => g.route),
+      guardRoutes,
+      staffRoutes: [],
+    };
+    const assistEnv: HuntEnvironment = { ...baseEnv, guardSpeedScale: 0.9 };
+    const start: HuntState = {
+      ...missionStart(),
+      guards: guardRoutes.map(createGuardState),
+    };
+    const log = (() => {
+      const r = new InputRecorder('ASSIST-SEED', STEP_SECONDS, start.player);
+      for (let i = 0; i < 240; i++) r.record(i, intent(0, -1, 'walk'), null, false);
+      return r.toLog();
+    })();
+
+    const assistA = replayHunt(log, start, assistEnv);
+    const assistB = replayHunt(log, start, assistEnv);
+    expect(assistA).toEqual(assistB); // deterministic under assist
+    const fullSpeed = replayHunt(log, start, baseEnv);
+    expect(assistA.guards).not.toEqual(fullSpeed.guards); // and genuinely slower guards
+  });
+
   it('a detain through the fold restarts at the checkpoint, preserving the plant and alert while incrementing detains', () => {
     // Player standing on the checkpoint with a guard already in contact range,
     // the device planted and the building in lockdown — one tick emits a detain

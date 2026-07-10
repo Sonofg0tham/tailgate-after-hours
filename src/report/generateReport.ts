@@ -48,6 +48,7 @@ export interface ReportModel {
   rating: Rating;
   ratingRemark: string;
   dawn: boolean;
+  abandoned: boolean;
 }
 
 const SEVERITY_ORDER: Record<Severity, number> = { CRITICAL: 0, HIGH: 1, MEDIUM: 2, LOW: 3 };
@@ -60,11 +61,13 @@ const INGRESS_TEXT: Record<string, (time: string) => string> = {
 
 export function generateReport(mission: MissionState): ReportModel {
   const dawn = mission.phase === 'dawn';
-  // The run ends at exfil, or at dawn if it timed out. Time on site is the
-  // FICTIONAL span from entering the building (ingress) to that end, on the
-  // same 01:00-05:00 clock as the finding timestamps — so a dawn run reads as
-  // ingress-to-05:00 (never the raw real playtime of the ~12-minute night).
-  const endMs = mission.exfilledAtMs ?? MISSION.dawnDeadlineMs;
+  const abandoned = mission.phase === 'abandoned';
+  // The run ends at exfil, at the abandon moment, or at dawn if it timed
+  // out. Time on site is the FICTIONAL span from entering the building
+  // (ingress) to that end, on the same 01:00-05:00 clock as the finding
+  // timestamps — so a dawn run reads as ingress-to-05:00 (never the raw
+  // real playtime of the ~12-minute night).
+  const endMs = mission.exfilledAtMs ?? mission.abandonedAtMs ?? MISSION.dawnDeadlineMs;
   const onSiteFromMs = mission.ingressAtMs ?? 0;
   const { rating, remark } = decideRating(mission);
 
@@ -81,7 +84,11 @@ export function generateReport(mission: MissionState): ReportModel {
       ref: 'ENG-2026-0710/NIGHT',
       window: '01:00-05:00',
       date: '10 JULY 2026',
-      outcomeLine: dawn ? dawnBanner(mission) : null,
+      outcomeLine: dawn
+        ? dawnBanner(mission)
+        : abandoned
+          ? `ENGAGEMENT ABANDONED BY THE CONSULTANT AT ${stampClock(mission.abandonedAtMs ?? 0)}`
+          : null,
     },
     findings,
     clientDetections,
@@ -93,6 +100,7 @@ export function generateReport(mission: MissionState): ReportModel {
     rating,
     ratingRemark: remark,
     dawn,
+    abandoned,
   };
 }
 
@@ -109,7 +117,9 @@ function buildFindings(mission: MissionState, dawn: boolean): Finding[] {
   if (mission.plantedAtMs !== null) {
     const tail = dawn
       ? 'Consultant did not clear the site before dawn; device recovery by the client is likely.'
-      : 'Device remained in place at exfil.';
+      : mission.phase === 'abandoned'
+        ? 'Engagement ended before exfil; device disposition unconfirmed.'
+        : 'Device remained in place at exfil.';
     raw.push({ severity: 'CRITICAL', text: `Rogue device planted on the server rack at ${stampClock(mission.plantedAtMs)}. ${tail}` });
   }
 

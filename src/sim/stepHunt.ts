@@ -45,6 +45,8 @@ export interface HuntEnvironment {
   guardRoutes: GuardRoute[];
   /** Each cleaner's def (route + badges), indexed the same as `state.staff`. */
   staffRoutes: StaffRoute[];
+  /** Assist mode (Phase 6): guard speed multiplier, default 1 (assist = 0.9). Fixed for an engagement, so replays stay pure. */
+  guardSpeedScale?: number;
 }
 
 /** alertLevel at which badge/smokers doors stop honouring badges/schedule and lock shut — ported from Tailgate's Door.ts lockdown check. */
@@ -96,6 +98,7 @@ export function stepHunt(
       alertLevel: state.alertLevel.level,
       dtSeconds,
       dtMs,
+      guardSpeedScale: env.guardSpeedScale,
       doorOverrides,
       investigateOverride: computeInvestigateOverride(guard, player, footstepRadius, newlyLanded),
     };

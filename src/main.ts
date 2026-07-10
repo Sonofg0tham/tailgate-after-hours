@@ -575,7 +575,10 @@ async function main(): Promise<void> {
       const endMs = mission.exfilledAtMs ?? huntState.simTimeMs;
       const report = generateReport(mission);
       telemetry.recordMissionEnd(mission, report.rating, endMs);
-      recordCompletion(report.rating, Math.round(endMs / 1000));
+      recordCompletion(report.rating, Math.round(endMs / 1000), {
+        timeOnSite: report.summary.timeOnSite,
+        assist: (huntEnv.guardSpeedScale ?? 1) < 1,
+      });
       audio.play('reportPrint');
       reportView.show(report, () => {
         audio.play('uiClick');
