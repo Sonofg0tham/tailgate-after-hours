@@ -1,3 +1,4 @@
+import { JUICE } from '../config/juice';
 import type { ReportModel, Rating } from './generateReport';
 
 /** DETAINED and DAWN are the outcomes that went wrong — shown in alarm red; the rest read amber. */
@@ -89,11 +90,20 @@ export class ReportView {
     button.addEventListener('click', onNewEngagement);
     this.sheet.append(button);
 
-    this.root.classList.add('visible');
+    // The document arrives: sections reveal in order (CSS animates; the
+    // reduced-motion body class or media query renders it complete and
+    // still — see index.html).
+    this.root.style.setProperty('--report-arrive-ms', `${JUICE.report.arriveMs}ms`);
+    Array.from(this.sheet.children).forEach((child, index) => {
+      child.classList.add('report-reveal');
+      (child as HTMLElement).style.setProperty('--reveal-delay', `${index * JUICE.report.sectionStaggerMs}ms`);
+    });
+
+    this.root.classList.add('visible', 'arriving');
   }
 
   hide(): void {
-    this.root.classList.remove('visible');
+    this.root.classList.remove('visible', 'arriving');
   }
 }
 

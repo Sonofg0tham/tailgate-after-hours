@@ -27,6 +27,8 @@ import { buildFixtures } from './world/Fixtures';
 import { AudioEngine } from './audio/AudioEngine';
 import { AUDIO } from './config/audio';
 import { hasLineOfSight } from './systems/Vision';
+import { JUICE } from './config/juice';
+import { initMotion, motionLevel } from './systems/Motion';
 import { FixedTimestepLoop } from './sim/FixedTimestepLoop';
 import { InputRecorder, type InputLogEntry } from './sim/InputLog';
 import { stepHunt, type HuntEnvironment, type HuntState } from './sim/stepHunt';
@@ -84,6 +86,7 @@ function holdLine(mission: MissionState): string {
 
 async function main(): Promise<void> {
   applyPaletteToCss();
+  initMotion(); // reduced motion is the fresh-visitor default
 
   const appEl = document.getElementById('app');
   const hudElRaw = document.getElementById('hud');
@@ -273,6 +276,8 @@ async function main(): Promise<void> {
   let drivenInteract: boolean | null = null;
   let playerStepTimerMs = 0;
   const guardStepTimersMs = guardsData.guards.map(() => 0);
+  let detainImpactRemainingMs = 0;
+  let shakeRemainingMs = 0;
 
   const movement = new MovementController();
   const keyboard = new KeyboardState();
@@ -558,6 +563,8 @@ async function main(): Promise<void> {
 
     if (detainedFlashRemainingMs === 0 && result.events.some((e: GuardEvent) => e.type === 'detain')) {
       detainedFlashRemainingMs = DETECTION.timing.detainedFlashMs;
+      detainImpactRemainingMs = JUICE.detainImpact.durationMs;
+      shakeRemainingMs = JUICE.shake.durationMs;
     }
 
     // Mission just ended (exfil or dawn): fold the run into the telemetry
@@ -673,6 +680,27 @@ async function main(): Promise<void> {
     }
 
     followCamera.follow(huntState.player.x, huntState.player.z, lastIntent.directionX, lastIntent.directionZ, frameDelta);
+
+    // Detain juice, applied AFTER the follow so it's a pure offset: a brief
+    // camera dip (motion level permitting) and a shake whose master
+    // intensity SHIPS AT ZERO (JUICE.shake.intensity — the Phase 6 slider).
+    // Timers decay regardless of level so toggling never strands them.
+    if (detainImpactRemainingMs > 0 || shakeRemainingMs > 0) {
+      const dtJuiceMs = frameDelta * 1000;
+      if (detainImpactRemainingMs > 0 && motionLevel() === 'full') {
+        const t = detainImpactRemainingMs / JUICE.detainImpact.durationMs; // 1 -> 0
+        followCamera.camera.position.y -= JUICE.detainImpact.dipMetres * Math.sin(t * Math.PI);
+      }
+      if (shakeRemainingMs > 0 && motionLevel() === 'full' && JUICE.shake.intensity > 0) {
+        const falloff = shakeRemainingMs / JUICE.shake.durationMs;
+        const phase = (performance.now() / 1000) * JUICE.shake.frequencyHz * Math.PI * 2;
+        const amp = JUICE.shake.amplitudeMetres * JUICE.shake.intensity * falloff;
+        followCamera.camera.position.x += Math.sin(phase) * amp;
+        followCamera.camera.position.z += Math.cos(phase * 1.31) * amp;
+      }
+      detainImpactRemainingMs = Math.max(0, detainImpactRemainingMs - dtJuiceMs);
+      shakeRemainingMs = Math.max(0, shakeRemainingMs - dtJuiceMs);
+    }
 
     const surface = surfaceAt(level, huntState.player.x, huntState.player.z);
     const radius = noiseRadius(lastIntent.speed, surface);
