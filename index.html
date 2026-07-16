@@ -264,6 +264,7 @@
       .overlay {
         position: fixed;
         inset: 0;
+        box-sizing: border-box;
         display: none;
         align-items: flex-start;
         justify-content: center;
@@ -280,6 +281,9 @@
       #kiosk {
         z-index: 110;
       }
+      #briefing {
+        z-index: 115;
+      }
       #pause {
         z-index: 105;
         background: rgba(8, 10, 13, 0.82);
@@ -288,6 +292,8 @@
         z-index: 120;
       }
       .terminal-card {
+        box-sizing: border-box;
+        min-width: 0;
         width: 100%;
         max-width: 680px;
         background: #12161c;
@@ -378,6 +384,52 @@
         letter-spacing: 0.12em;
         font-size: 0.8em;
       }
+      .briefing-card {
+        max-width: 640px;
+      }
+      .briefing-card h1 {
+        font-family: 'Saira Condensed', sans-serif;
+        font-size: 1.45em;
+        letter-spacing: 0.18em;
+      }
+      .briefing-status {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: space-between;
+        gap: 8px 16px;
+        margin: 16px 0;
+        padding: 8px 10px;
+        border: 1px solid var(--amber, #ffb000);
+        color: var(--amber, #ffb000);
+        font-size: 0.82em;
+        letter-spacing: 0.1em;
+      }
+      .briefing-status-label {
+        color: rgba(199, 205, 212, 0.65);
+      }
+      .briefing-intro {
+        margin: 0;
+        color: rgba(199, 205, 212, 0.82);
+      }
+      .briefing-guidance {
+        display: grid;
+        gap: 8px;
+        margin: 8px 0 14px;
+        padding-left: 1.5em;
+      }
+      .briefing-guidance li {
+        padding-left: 0.35em;
+        overflow-wrap: anywhere;
+      }
+      .briefing-guidance li::marker {
+        color: var(--amber, #ffb000);
+      }
+      .briefing-control {
+        color: rgba(199, 205, 212, 0.55);
+        font-size: 0.78em;
+        letter-spacing: 0.08em;
+        overflow-wrap: anywhere;
+      }
       .pause-card {
         max-width: 420px;
         margin-top: 10vh;
@@ -423,8 +475,46 @@
       body.high-contrast .kiosk-sub,
       body.high-contrast .kiosk-dim,
       body.high-contrast .report-meta,
-      body.high-contrast .settings-value {
+      body.high-contrast .settings-value,
+      body.high-contrast .briefing-intro,
+      body.high-contrast .briefing-control,
+      body.high-contrast .briefing-status-label {
         color: #e6e9ee;
+      }
+      body.high-contrast .briefing-status {
+        border-color: #ffffff;
+      }
+      @media (max-height: 800px) {
+        #briefing {
+          padding-block: 12px;
+        }
+        .briefing-card {
+          padding: 16px 24px;
+          line-height: 1.35;
+        }
+        .briefing-card .report-rule {
+          margin: 10px 0;
+        }
+        .briefing-status {
+          margin: 10px 0;
+          padding-block: 6px;
+        }
+        .briefing-guidance {
+          gap: 4px;
+          margin-block: 6px 8px;
+        }
+        .briefing-card .kiosk-button {
+          margin-top: 8px;
+          padding-block: 8px;
+        }
+      }
+      @media (max-width: 640px) {
+        #briefing {
+          padding: 12px 8px;
+        }
+        .briefing-card {
+          padding-inline: 16px;
+        }
       }
     </style>
   </head>
@@ -435,6 +525,17 @@
     <div id="detained-flash">DETAINED</div>
     <div id="report"><div id="report-sheet" class="report-sheet"></div></div>
     <div id="kiosk" class="overlay"><div id="kiosk-card" class="terminal-card"></div></div>
+    <section
+      id="briefing"
+      class="overlay"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="briefing-title"
+      aria-describedby="briefing-description"
+      aria-hidden="true"
+    >
+      <article id="briefing-card" class="terminal-card briefing-card" role="document"></article>
+    </section>
     <div id="settings" class="overlay"><div id="settings-card" class="terminal-card"></div></div>
     <div id="pause" class="overlay">
       <div class="terminal-card pause-card">

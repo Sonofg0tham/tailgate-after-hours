@@ -4,14 +4,15 @@ import type { Rating } from '../report/rating';
  * Best-rating and run-history persistence, ported from Tailgate's
  * `progress.ts` and cut down to this game's single floor. Stored under one
  * versioned localStorage key; v1 (Phase 4, best-only) migrates forward with
- * an empty history. Per the Patch Tuesday rule, ABANDONED runs are filed in
- * the history and count as completions but can NEVER become a best; DAWN
+ * an empty history. Schema v3 adds the one-time briefing flag while v1/v2
+ * infer it from prior completions. Per the Patch Tuesday rule, ABANDONED
+ * runs are filed in the history and count as completions but can NEVER become a best; DAWN
  * ranks below every finished outcome and never sets a best time. Everything
  * is guarded for headless/blocked-storage environments.
  */
 
 const STORAGE_KEY = 'tailgate-after-hours.progress';
-const VERSION = 2;
+const VERSION = 3;
 const HISTORY_CAP = 20;
 
 /** Higher rank is better. ABANDONED is unranked by design — it never competes. */
@@ -43,6 +44,7 @@ export interface Progress {
   completions: number;
   /** Newest first, capped at HISTORY_CAP. */
   runs: RunRecord[];
+  briefingSeen: boolean;
 }
 
 /** The subset of the Storage API this module uses — lets tests pass a mock. */
@@ -60,7 +62,7 @@ function defaultStore(): StorageLike | null {
 }
 
 function empty(): Progress {
-  return { bestRating: null, bestTimeSec: null, completions: 0, runs: [] };
+  return { bestRating: null, bestTimeSec: null, completions: 0, runs: [], briefingSeen: false };
 }
 
 function isRating(value: unknown): value is Rating {
@@ -120,20 +122,41 @@ export function loadProgress(store: StorageLike | null = defaultStore()): Progre
       bestTimeSec?: number | null;
       completions?: number;
       runs?: RunRecord[];
+      briefingSeen?: boolean;
     };
-    if (parsed.version !== VERSION && parsed.version !== 1) {
+    if (parsed.version !== VERSION && parsed.version !== 2 && parsed.version !== 1) {
       return empty();
     }
+    const completions =
+      Number.isInteger(parsed.completions) && isNonNegativeNumber(parsed.completions) ? parsed.completions : 0;
     return {
       bestRating: isRating(parsed.bestRating) && parsed.bestRating !== 'ABANDONED' ? parsed.bestRating : null,
       bestTimeSec: isNonNegativeNumber(parsed.bestTimeSec) ? parsed.bestTimeSec : null,
-      completions: Number.isInteger(parsed.completions) && isNonNegativeNumber(parsed.completions) ? parsed.completions : 0,
+      completions,
       // v1 predates the history — migrate with an empty one.
       runs: Array.isArray(parsed.runs) ? parsed.runs.filter(isRunRecord).slice(0, HISTORY_CAP) : [],
+      briefingSeen:
+        parsed.version === 1 || parsed.version === 2
+          ? completions > 0
+          : typeof parsed.briefingSeen === 'boolean'
+            ? parsed.briefingSeen
+            : false,
     };
   } catch {
     return empty();
   }
+}
+
+export function markBriefingSeen(store: StorageLike | null = defaultStore()): Progress {
+  const next: Progress = { ...loadProgress(store), briefingSeen: true };
+  if (store) {
+    try {
+      store.setItem(STORAGE_KEY, JSON.stringify({ version: VERSION, ...next }));
+    } catch {
+      // Storage full or blocked: the current session can still continue.
+    }
+  }
+  return next;
 }
 
 /**
@@ -169,7 +192,13 @@ export function recordCompletion(
   };
   const runs = [record, ...current.runs].slice(0, HISTORY_CAP);
 
-  const next: Progress = { bestRating, bestTimeSec, completions: current.completions + 1, runs };
+  const next: Progress = {
+    bestRating,
+    bestTimeSec,
+    completions: current.completions + 1,
+    runs,
+    briefingSeen: current.briefingSeen,
+  };
 
   if (store) {
     try {

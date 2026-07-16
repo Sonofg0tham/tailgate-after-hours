@@ -53,11 +53,12 @@ import { DoorPanel } from './entities/DoorPanel';
 import { Telemetry } from './telemetry/Telemetry';
 import { generateReport } from './report/generateReport';
 import { ReportView } from './report/ReportView';
-import { loadProgress, recordCompletion } from './systems/Progress';
+import { loadProgress, markBriefingSeen, recordCompletion } from './systems/Progress';
 import { loadSettings, saveSettings, type GameSettings } from './systems/Settings';
 import { setMotionLevel } from './systems/Motion';
 import { setGridMinOverride } from './config/renderLighting';
 import { EngagementLifecycle } from './systems/EngagementLifecycle';
+import { BriefingView, filterBriefingInteraction } from './ui/BriefingView';
 import { Kiosk } from './ui/Kiosk';
 import { buildHudLines } from './ui/HudPresenter';
 import { PauseLanyard } from './ui/PauseLanyard';
@@ -67,6 +68,12 @@ import guardsDataRaw from './data/guards.json';
 import staffDataRaw from './data/staff.json';
 
 const FIXED_STEP_SECONDS = 1 / 60;
+
+function gamepadAIsHeld(): boolean {
+  const pads = navigator.getGamepads ? navigator.getGamepads() : [];
+  const pad = pads.find((candidate) => candidate !== null);
+  return (pad?.buttons[0]?.value ?? 0) > 0.5;
+}
 
 async function main(): Promise<void> {
   applyPaletteToCss();
@@ -268,6 +275,7 @@ async function main(): Promise<void> {
   let settingsOpen = false;
   let settingsReturnTo: 'kiosk' | 'pause' = 'kiosk';
   let prevStartHeld = false;
+  let suppressInteractUntilRelease = false;
 
   const movement = new MovementController();
   const keyboard = new KeyboardState();
@@ -419,8 +427,9 @@ async function main(): Promise<void> {
   // --- Phase 6 flow functions (hoisted declarations; wired to the UI below).
 
   /** Everything a fresh run needs, from either the kiosk or [ NEW ENGAGEMENT ]. Assist applies here — the label says so. */
-  function beginEngagement(): void {
+  function beginEngagement(suppressInitialInteract = false): void {
     kiosk.hide();
+    briefing.hide();
     settingsPanel.hide();
     settingsOpen = false;
     reportView.hide();
@@ -439,9 +448,19 @@ async function main(): Promise<void> {
     detainImpactRemainingMs = reset.detainImpactRemainingMs;
     shakeRemainingMs = reset.shakeRemainingMs;
     boltLandingRingRemainingMs = reset.boltLandingRingRemainingMs;
+    suppressInteractUntilRelease = suppressInitialInteract;
     boltLandingRing.setVisible(false);
     movement.reset();
     audio.unlock();
+  }
+
+  function requestEngagement(): void {
+    if (loadProgress().briefingSeen) {
+      beginEngagement();
+      return;
+    }
+    kiosk.hide();
+    briefing.show(gamepadAIsHeld());
   }
 
   /** The engagement is over (exfil, dawn, or abandoned): file the report, persist, raise the document. */
@@ -473,6 +492,7 @@ async function main(): Promise<void> {
   }
 
   function showKiosk(): void {
+    briefing.hide();
     lifecycle.showKiosk();
     kiosk.show(loadProgress());
   }
@@ -536,11 +556,17 @@ async function main(): Promise<void> {
       closeSettings();
     },
   );
+  const briefing = new BriefingView(() => {
+    markBriefingSeen();
+    audio.unlock();
+    audio.play('uiClick');
+    beginEngagement(true);
+  });
   const kiosk = new Kiosk(
     () => {
       audio.unlock(); // the begin click is the autoplay gesture
       audio.play('uiClick');
-      beginEngagement();
+      requestEngagement();
     },
     () => {
       settingsReturnTo = 'kiosk';
@@ -606,7 +632,12 @@ async function main(): Promise<void> {
       interactHeld = replayEntry.interactHeld;
     } else {
       intent = movement.update();
-      interactHeld = InteractInput.read(keyboard);
+      const filteredInteraction = filterBriefingInteraction(
+        suppressInteractUntilRelease,
+        InteractInput.read(keyboard),
+      );
+      suppressInteractUntilRelease = filteredInteraction.suppressUntilRelease;
+      interactHeld = filteredInteraction.interactHeld;
       const throwInput = ThrowInput.read();
       const throwHeld = throwInput.held || mouseHeld;
       if (throwHeld && !prevThrowHeld && huntState.bolts.length < THROW.boltCount) {
@@ -749,6 +780,7 @@ async function main(): Promise<void> {
     // Pad pause: Start (button 9) toggles the lanyard, edge-triggered.
     const pads = navigator.getGamepads ? navigator.getGamepads() : [];
     const pad = pads.find((p) => p !== null);
+    briefing.pollGamepadA((pad?.buttons[0]?.value ?? 0) > 0.5);
     const startHeld = (pad?.buttons[9]?.value ?? 0) > 0.5;
     if (startHeld && !prevStartHeld && lifecycle.appState !== 'kiosk') {
       togglePause();
