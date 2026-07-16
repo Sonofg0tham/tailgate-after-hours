@@ -37,6 +37,11 @@ export interface ExtrudedLevel {
   sampleFloorBrightness(x: number, y: number): number | null;
 }
 
+export interface ExtrudeLevelOptions {
+  /** DEV-only grid and zone-tint geometry. Production omits both allocations. */
+  debugVisuals?: boolean;
+}
+
 /** The rendered brightness of a floor cell — the light grid through the monotone render curve. */
 export function cellBrightness(lightGrid: readonly number[][], x: number, y: number): number {
   return gridBrightness(lightGrid[y]?.[x] ?? 0);
@@ -71,8 +76,13 @@ function paintGeometry(geometry: THREE.BufferGeometry, brightness: number): void
   geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
 }
 
-export function extrudeLevel(level: ParsedLevel, lightGrid?: readonly number[][]): ExtrudedLevel {
+export function extrudeLevel(
+  level: ParsedLevel,
+  lightGrid?: readonly number[][],
+  options: ExtrudeLevelOptions = {},
+): ExtrudedLevel {
   const { cellSize } = level;
+  const debugVisuals = options.debugVisuals ?? true;
   const group = new THREE.Group();
   const wallBounds: WallBounds[] = [];
   // Without a grid (unit tests that only want wallBounds), everything paints
@@ -112,7 +122,7 @@ export function extrudeLevel(level: ParsedLevel, lightGrid?: readonly number[][]
 
   // --- Floor: two parallel merged-mesh sets (by surface, by zone), toggled by visibility. ---
   const bySurface = new Map<SurfaceType, THREE.BufferGeometry[]>();
-  const byZone = new Map<string, THREE.BufferGeometry[]>();
+  const byZone = debugVisuals ? new Map<string, THREE.BufferGeometry[]>() : null;
   // Where each cell's four vertices land in its surface's merged geometry,
   // so sampleFloorBrightness can read the real attribute back.
   const vertexOffsetBySurface = new Map<SurfaceType, number>();
@@ -127,7 +137,7 @@ export function extrudeLevel(level: ParsedLevel, lightGrid?: readonly number[][]
       plane.rotateX(-Math.PI / 2);
       plane.translate((x + 0.5) * cellSize, 0, (y + 0.5) * cellSize);
 
-      const lit = plane.clone();
+      const lit = debugVisuals ? plane.clone() : plane;
       paintGeometry(lit, grid ? cellBrightness(grid, x, y) : 1);
       const surfaceList = bySurface.get(cell.surface) ?? [];
       surfaceList.push(lit);
@@ -137,9 +147,11 @@ export function extrudeLevel(level: ParsedLevel, lightGrid?: readonly number[][]
       cellVertexIndex.set(`${x},${y}`, { surface: cell.surface, vertexIndex: offset });
       vertexOffsetBySurface.set(cell.surface, offset + lit.getAttribute('position').count);
 
-      const zoneList = byZone.get(cell.zone) ?? [];
-      zoneList.push(plane);
-      byZone.set(cell.zone, zoneList);
+      if (byZone) {
+        const zoneList = byZone.get(cell.zone) ?? [];
+        zoneList.push(plane);
+        byZone.set(cell.zone, zoneList);
+      }
     }
   }
 
@@ -154,18 +166,22 @@ export function extrudeLevel(level: ParsedLevel, lightGrid?: readonly number[][]
     surfaceFloorGroup.add(mesh);
   }
 
-  const zoneFloorGroup = new THREE.Group();
-  zoneFloorGroup.visible = false;
-  for (const [zone, geometries] of byZone) {
-    const tint = level.zones[zone]?.tint ?? '#888888';
-    const mesh = new THREE.Mesh(
-      mergeGeometries(geometries),
-      new THREE.MeshStandardMaterial({ color: new THREE.Color(tint), roughness: 0.95 }),
-    );
-    zoneFloorGroup.add(mesh);
+  let zoneFloorGroup: THREE.Group | null = null;
+  if (byZone) {
+    zoneFloorGroup = new THREE.Group();
+    zoneFloorGroup.visible = false;
+    for (const [zone, geometries] of byZone) {
+      const tint = level.zones[zone]?.tint ?? '#888888';
+      const mesh = new THREE.Mesh(
+        mergeGeometries(geometries),
+        new THREE.MeshStandardMaterial({ color: new THREE.Color(tint), roughness: 0.95 }),
+      );
+      zoneFloorGroup.add(mesh);
+    }
   }
 
-  group.add(surfaceFloorGroup, zoneFloorGroup);
+  group.add(surfaceFloorGroup);
+  if (zoneFloorGroup) group.add(zoneFloorGroup);
 
   // --- Door frames: decorative posts either side of the opening, non-colliding. ---
   const frameMaterial = new THREE.MeshStandardMaterial({ color: 0x5a6272, roughness: 0.7 });
@@ -222,9 +238,11 @@ export function extrudeLevel(level: ParsedLevel, lightGrid?: readonly number[][]
   }
 
   // --- Grid overlay: thin wireframe lines over every floor cell boundary. ---
-  const gridOverlay = buildGridOverlay(level);
-  gridOverlay.visible = false;
-  group.add(gridOverlay);
+  const gridOverlay = debugVisuals ? buildGridOverlay(level) : null;
+  if (gridOverlay) {
+    gridOverlay.visible = false;
+    group.add(gridOverlay);
+  }
 
   let disposed = false;
 
@@ -257,11 +275,12 @@ export function extrudeLevel(level: ParsedLevel, lightGrid?: readonly number[][]
       for (const material of materials) material.dispose();
     },
     setSurfaceTintDebug(enabled: boolean) {
+      if (!zoneFloorGroup) return;
       surfaceFloorGroup.visible = !enabled;
       zoneFloorGroup.visible = enabled;
     },
     setGridOverlay(enabled: boolean) {
-      gridOverlay.visible = enabled;
+      if (gridOverlay) gridOverlay.visible = enabled;
     },
     sampleFloorBrightness(x: number, y: number): number | null {
       const entry = cellVertexIndex.get(`${x},${y}`);

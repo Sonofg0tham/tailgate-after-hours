@@ -29,33 +29,219 @@
       }
       :root {
         --hud-scale: 1;
+        --hud-edge: clamp(8px, 1.4vw, 20px);
+        --hud-gap: clamp(8px, 1vw, 14px);
+        --hud-panel-pad-y: clamp(8px, calc(9px * var(--hud-scale)), 15px);
+        --hud-panel-pad-x: clamp(10px, calc(12px * var(--hud-scale)), 19px);
+        --hud-panel-bg: rgba(8, 10, 13, 0.84);
+        --hud-panel-bg-strong: rgba(8, 10, 13, 0.94);
+        --hud-line: rgba(199, 205, 212, 0.45);
+        --hud-track: rgba(199, 205, 212, 0.16);
+        --hud-shadow: rgba(0, 0, 0, 0.72);
+        --hud-radius: 0;
       }
-      #hud {
+      #player-hud {
         position: fixed;
-        top: 8px;
-        left: 8px;
+        inset: var(--hud-edge);
+        z-index: 10;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(18rem, min(38vw, 32rem)) minmax(0, 1fr);
+        grid-template-rows: auto 1fr auto;
+        grid-template-areas:
+          'objective . alert'
+          '. . .'
+          '. interaction inventory';
+        gap: var(--hud-gap);
+        min-width: 0;
         color: var(--text, #c7cdd4);
         font-family: 'IBM Plex Mono', monospace;
         font-size: calc(13px * var(--hud-scale));
-        line-height: 1.5;
-        white-space: pre;
+        line-height: 1.3;
         pointer-events: none;
-        text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+        text-shadow: 0 1px 2px var(--hud-shadow);
       }
-      #suspicion {
-        position: fixed;
-        top: 8px;
-        right: 8px;
-        width: 160px;
-        height: 12px;
-        border: 1px solid var(--text, #c7cdd4);
-        pointer-events: none;
+      .hud-panel {
+        box-sizing: border-box;
+        min-width: 0;
+        max-width: 100%;
+        padding: var(--hud-panel-pad-y) var(--hud-panel-pad-x);
+        overflow-wrap: anywhere;
+        background: var(--hud-panel-bg);
+        border: 1px solid var(--hud-line);
+        border-top: 2px solid var(--hud-panel-accent, var(--amber, #ffb000));
+        border-radius: var(--hud-radius);
+        box-shadow: 0 3px 16px var(--hud-shadow);
       }
-      #suspicion-fill {
+      .hud-label {
+        margin: 0 0 0.28em;
+        color: rgba(199, 205, 212, 0.68);
+        font: 400 0.68em/1.2 'IBM Plex Mono', monospace;
+        letter-spacing: 0.16em;
+      }
+      .hud-primary {
+        display: block;
+        color: var(--text, #c7cdd4);
+        font: 600 1.28em/1.08 'Saira Condensed', sans-serif;
+        letter-spacing: 0.055em;
+      }
+      #hud-objective-region {
+        grid-area: objective;
+        align-self: start;
+      }
+      .hud-clock-row {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: space-between;
+        gap: 0.2em 0.8em;
+        margin-top: 0.7em;
+        padding-top: 0.55em;
+        border-top: 1px solid var(--hud-line);
+        font-size: 0.78em;
+      }
+      .hud-clock-label {
+        color: rgba(199, 205, 212, 0.68);
+        letter-spacing: 0.1em;
+      }
+      #hud-clock {
+        color: var(--amber, #ffb000);
+        font-variant-numeric: tabular-nums;
+      }
+      #hud-alert-region {
+        grid-area: alert;
+        align-self: start;
+        justify-self: end;
+        width: min(100%, 22rem);
+        --hud-panel-accent: var(--text, #c7cdd4);
+      }
+      #hud-alert-region[data-alert-state='cautious'] {
+        --hud-panel-accent: var(--amber, #ffb000);
+      }
+      #hud-alert-region[data-alert-state='alarm'] {
+        --hud-panel-accent: var(--alarm, #ff3b30);
+      }
+      .hud-alert-line {
+        display: flex;
+        align-items: center;
+        gap: 0.7em;
+      }
+      .hud-alert-marker {
+        box-sizing: border-box;
+        display: block;
+        flex: 0 0 auto;
+        width: 0.82em;
+        height: 0.82em;
+        border: 2px solid currentColor;
+        color: var(--text, #c7cdd4);
+      }
+      .hud-alert-marker[data-marker='circle'] {
+        border-radius: 50%;
+      }
+      .hud-alert-marker[data-marker='diamond'] {
+        color: var(--amber, #ffb000);
+        transform: rotate(45deg);
+      }
+      .hud-alert-marker[data-marker='triangle'] {
+        width: 0;
+        height: 0;
+        border: 0;
+        border-right: 0.48em solid transparent;
+        border-bottom: 0.82em solid var(--alarm, #ff3b30);
+        border-left: 0.48em solid transparent;
+      }
+      .hud-alert-value {
+        font: 600 1.28em/1 'Saira Condensed', sans-serif;
+        letter-spacing: 0.1em;
+      }
+      #hud-alert-region[data-alert-state='alarm'] .hud-alert-value {
+        color: var(--alarm, #ff3b30);
+      }
+      .hud-meter-row {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 0.7em;
+        align-items: center;
+        margin-top: 0.72em;
+      }
+      .hud-meter {
+        box-sizing: border-box;
+        height: 0.48em;
+        overflow: hidden;
+        background: var(--hud-track);
+        border: 1px solid var(--hud-line);
+      }
+      .hud-meter-fill {
         height: 100%;
-        width: 0%;
+        width: var(--hud-fill, 0%);
         background: var(--amber, #ffb000);
-        transition: width 0.1s linear, background-color 0.2s linear;
+        transition: width 120ms linear;
+      }
+      #hud-alert-region[data-alert-state='alarm'] .hud-meter-fill {
+        background: var(--alarm, #ff3b30);
+      }
+      .hud-meter-value {
+        min-width: 3ch;
+        text-align: right;
+        font-variant-numeric: tabular-nums;
+      }
+      #hud-inventory-region {
+        grid-area: inventory;
+        align-self: end;
+        justify-self: end;
+        width: min(100%, 18rem);
+      }
+      .hud-inventory-grid {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 0.35em 1em;
+        align-items: baseline;
+      }
+      .hud-inventory-grid .hud-label {
+        margin: 0;
+      }
+      .hud-inventory-value {
+        color: var(--amber, #ffb000);
+        font: 600 1.08em/1 'Saira Condensed', sans-serif;
+        letter-spacing: 0.08em;
+        text-align: right;
+      }
+      #hud-interaction-region {
+        grid-area: interaction;
+        align-self: end;
+        justify-self: stretch;
+        text-align: center;
+      }
+      #hud-interaction-region[hidden] {
+        display: none;
+      }
+      .hud-interaction-prompt {
+        color: var(--amber, #ffb000);
+        font: 600 1.18em/1.1 'Saira Condensed', sans-serif;
+        letter-spacing: 0.08em;
+      }
+      .hud-interaction-progress {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 0.7em;
+        align-items: center;
+        margin-top: 0.65em;
+      }
+      #dev-debug {
+        position: fixed;
+        top: var(--hud-edge);
+        left: 50%;
+        z-index: 11;
+        box-sizing: border-box;
+        max-width: 42vw;
+        margin: 0;
+        padding: 8px 10px;
+        transform: translateX(-50%);
+        overflow-wrap: anywhere;
+        white-space: pre-wrap;
+        background: var(--hud-panel-bg-strong);
+        border: 1px solid var(--hud-line);
+        color: var(--text, #c7cdd4);
+        font: 400 11px/1.35 'IBM Plex Mono', monospace;
+        pointer-events: none;
       }
       #detained-flash {
         position: fixed;
@@ -462,9 +648,23 @@
       }
 
       /* High contrast: pure white text, harder borders, more opaque panels. */
-      body.high-contrast #hud {
+      body.high-contrast #player-hud {
         color: #ffffff;
         text-shadow: 0 1px 3px #000;
+      }
+      body.high-contrast .hud-panel {
+        background: #090b0e;
+        border-width: 2px;
+        border-color: #ffffff;
+        border-top-color: var(--hud-panel-accent, #ffffff);
+      }
+      body.high-contrast .hud-label,
+      body.high-contrast .hud-clock-label {
+        color: #ffffff;
+      }
+      body.high-contrast .hud-meter {
+        background: #000000;
+        border-color: #ffffff;
       }
       body.high-contrast .terminal-card,
       body.high-contrast .report-sheet {
@@ -483,6 +683,14 @@
       }
       body.high-contrast .briefing-status {
         border-color: #ffffff;
+      }
+      body.reduced-motion .hud-meter-fill {
+        transition: none;
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .hud-meter-fill {
+          transition: none;
+        }
       }
       @media (max-height: 800px) {
         #briefing {
@@ -520,8 +728,64 @@
   </head>
   <body>
     <div id="app"></div>
-    <div id="hud"></div>
-    <div id="suspicion"><div id="suspicion-fill"></div></div>
+    <aside id="player-hud" aria-label="Engagement status">
+      <section id="hud-objective-region" class="hud-panel" aria-labelledby="hud-objective-heading">
+        <h2 id="hud-objective-heading" class="hud-label">CURRENT OBJECTIVE</h2>
+        <strong id="hud-objective" class="hud-primary">PLANT DEVICE IN SERVER ROOM</strong>
+        <div class="hud-clock-row">
+          <span class="hud-clock-label">ENGAGEMENT CLOCK</span>
+          <time id="hud-clock">01:00</time>
+        </div>
+      </section>
+      <section id="hud-alert-region" class="hud-panel" data-alert-state="calm" aria-labelledby="hud-alert-heading">
+        <h2 id="hud-alert-heading" class="hud-label">ALERT STATE</h2>
+        <div class="hud-alert-line">
+          <span id="hud-alert-marker" class="hud-alert-marker" data-marker="circle" aria-hidden="true"></span>
+          <strong id="hud-alert-label" class="hud-alert-value">CALM</strong>
+        </div>
+        <div class="hud-meter-row">
+          <div
+            id="hud-suspicion-meter"
+            class="hud-meter"
+            role="meter"
+            aria-label="Suspicion"
+            aria-valuemin="0"
+            aria-valuemax="100"
+            aria-valuenow="0"
+          >
+            <div id="hud-suspicion-fill" class="hud-meter-fill"></div>
+          </div>
+          <output id="hud-suspicion-value" class="hud-meter-value" aria-label="Suspicion percentage">0%</output>
+        </div>
+      </section>
+      <section id="hud-inventory-region" class="hud-panel" aria-labelledby="hud-inventory-heading">
+        <h2 id="hud-inventory-heading" class="hud-label">FIELD KIT</h2>
+        <div class="hud-inventory-grid">
+          <span class="hud-label">MISSION DEVICE</span>
+          <strong id="hud-device" class="hud-inventory-value">READY</strong>
+          <span class="hud-label">BOLTS</span>
+          <strong id="hud-bolts" class="hud-inventory-value">3</strong>
+        </div>
+      </section>
+      <section id="hud-interaction-region" class="hud-panel" aria-label="Available interaction" hidden>
+        <div id="hud-interaction-prompt" class="hud-interaction-prompt"></div>
+        <div class="hud-interaction-progress">
+          <div
+            id="hud-interaction-progress"
+            class="hud-meter"
+            role="progressbar"
+            aria-label="Hold progress"
+            aria-valuemin="0"
+            aria-valuemax="100"
+            aria-valuenow="0"
+          >
+            <div id="hud-interaction-fill" class="hud-meter-fill"></div>
+          </div>
+          <output id="hud-interaction-value" class="hud-meter-value" aria-label="Hold progress percentage"></output>
+        </div>
+      </section>
+    </aside>
+    <pre id="dev-debug" hidden aria-hidden="true"></pre>
     <div id="detained-flash">DETAINED</div>
     <div id="report"><div id="report-sheet" class="report-sheet"></div></div>
     <div id="kiosk" class="overlay"><div id="kiosk-card" class="terminal-card"></div></div>

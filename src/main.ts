@@ -36,8 +36,7 @@ import { abandonMission, createMissionState } from './sim/MissionState';
 import type { MovementIntent } from './input/InputState';
 import { noiseRadius } from './systems/Noise';
 import { NoiseRingRenderer } from './systems/NoiseRingRenderer';
-import { createDebugToggles } from './systems/DebugToggles';
-import { nightClockLabel } from './systems/NightClock';
+import { createDebugToggles, type DebugState } from './systems/DebugToggles';
 import { buildLightGrid, lightLevelAtWorld } from './systems/LightModel';
 import { buildLightGridMesh } from './systems/LightGridRenderer';
 import { resolveThrowAim } from './systems/ThrowAim';
@@ -60,7 +59,8 @@ import { setGridMinOverride } from './config/renderLighting';
 import { EngagementLifecycle } from './systems/EngagementLifecycle';
 import { BriefingView, filterBriefingInteraction } from './ui/BriefingView';
 import { Kiosk } from './ui/Kiosk';
-import { buildHudLines } from './ui/HudPresenter';
+import { buildDebugLines, buildPlayerHudPresentation } from './ui/HudPresenter';
+import { DevDebugHud, PlayerHud } from './ui/PlayerHud';
 import { PauseLanyard } from './ui/PauseLanyard';
 import { SettingsPanel } from './ui/SettingsPanel';
 import floor12 from './data/floor12.json';
@@ -80,17 +80,67 @@ async function main(): Promise<void> {
   initMotion(); // reduced motion is the fresh-visitor default
 
   const appEl = document.getElementById('app');
-  const hudElRaw = document.getElementById('hud');
-  const suspicionFillRaw = document.getElementById('suspicion-fill');
+  const objectiveEl = document.getElementById('hud-objective');
+  const clockEl = document.getElementById('hud-clock');
+  const alertRegionEl = document.getElementById('hud-alert-region');
+  const alertMarkerEl = document.getElementById('hud-alert-marker');
+  const alertLabelEl = document.getElementById('hud-alert-label');
+  const suspicionMeterEl = document.getElementById('hud-suspicion-meter');
+  const suspicionFillEl = document.getElementById('hud-suspicion-fill');
+  const suspicionValueEl = document.getElementById('hud-suspicion-value');
+  const deviceEl = document.getElementById('hud-device');
+  const boltsEl = document.getElementById('hud-bolts');
+  const interactionRegionEl = document.getElementById('hud-interaction-region');
+  const interactionPromptEl = document.getElementById('hud-interaction-prompt');
+  const interactionProgressEl = document.getElementById('hud-interaction-progress');
+  const interactionFillEl = document.getElementById('hud-interaction-fill');
+  const interactionValueEl = document.getElementById('hud-interaction-value');
+  const devDebugEl = document.getElementById('dev-debug');
   const detainedFlashRaw = document.getElementById('detained-flash');
-  if (!appEl || !hudElRaw || !suspicionFillRaw || !detainedFlashRaw) {
-    throw new Error('Expected #app, #hud, #suspicion-fill and #detained-flash elements in index.html');
+  if (
+    !appEl ||
+    !objectiveEl ||
+    !clockEl ||
+    !alertRegionEl ||
+    !alertMarkerEl ||
+    !alertLabelEl ||
+    !suspicionMeterEl ||
+    !suspicionFillEl ||
+    !suspicionValueEl ||
+    !deviceEl ||
+    !boltsEl ||
+    !interactionRegionEl ||
+    !interactionPromptEl ||
+    !interactionProgressEl ||
+    !interactionFillEl ||
+    !interactionValueEl ||
+    !devDebugEl ||
+    !detainedFlashRaw
+  ) {
+    throw new Error('Expected the player HUD, DEV debug and detained-flash regions in index.html');
   }
-  // TS doesn't narrow captured consts across the frame() closure below, so
-  // rebind to names whose type is provably non-null.
-  const hudEl: HTMLElement = hudElRaw;
-  const suspicionFillEl: HTMLElement = suspicionFillRaw;
   const detainedFlashEl: HTMLElement = detainedFlashRaw;
+  const playerHud = new PlayerHud({
+    objective: objectiveEl,
+    clock: clockEl,
+    alertRegion: alertRegionEl,
+    alertMarker: alertMarkerEl,
+    alertLabel: alertLabelEl,
+    suspicionMeter: suspicionMeterEl,
+    suspicionFill: suspicionFillEl,
+    suspicionValue: suspicionValueEl,
+    device: deviceEl,
+    bolts: boltsEl,
+    interactionRegion: interactionRegionEl,
+    interactionPrompt: interactionPromptEl,
+    interactionProgress: interactionProgressEl,
+    interactionFill: interactionFillEl,
+    interactionValue: interactionValueEl,
+  });
+  let devDebugHud: DevDebugHud | null = null;
+  if (import.meta.env.DEV) {
+    devDebugHud = new DevDebugHud(devDebugEl);
+  }
 
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(PALETTE_HEX.base);
@@ -105,11 +155,14 @@ async function main(): Promise<void> {
   // The extruder paints floor/wall vertex colours FROM the light grid — the
   // render-agrees-with-grid invariant, by construction (see Extruder.ts).
   // `let`: the visibility-floor setting re-extrudes the visual live.
-  let extruded = extrudeLevel(level, lightGrid);
+  let extruded = extrudeLevel(level, lightGrid, { debugVisuals: import.meta.env.DEV });
   scene.add(extruded.group);
 
-  const lightGridMesh = buildLightGridMesh(level, lightGrid);
-  scene.add(lightGridMesh);
+  let lightGridMesh: ReturnType<typeof buildLightGridMesh> | null = null;
+  if (import.meta.env.DEV) {
+    lightGridMesh = buildLightGridMesh(level, lightGrid);
+    scene.add(lightGridMesh);
+  }
 
   // The night rig (Phase 5): the daylight ambient+directional pair is gone.
   // Dynamic objects (characters, furniture, door panels) get a dim ambient,
@@ -142,8 +195,11 @@ async function main(): Promise<void> {
   window.addEventListener('keydown', () => audio.unlock());
   window.addEventListener('pointerdown', () => audio.unlock());
 
-  const noiseRing = new NoiseRingRenderer();
-  scene.add(noiseRing.mesh);
+  let noiseRing: NoiseRingRenderer | null = null;
+  if (import.meta.env.DEV) {
+    noiseRing = new NoiseRingRenderer();
+    scene.add(noiseRing.mesh);
+  }
 
   const followCamera = new FollowCamera(window.innerWidth / window.innerHeight);
 
@@ -177,8 +233,11 @@ async function main(): Promise<void> {
     enableCharacterShadows(character.model);
     const torch = new TorchBeam();
     scene.add(torch.group);
-    const debugCone = new DebugVisionCone();
-    scene.add(debugCone.mesh);
+    let debugCone: DebugVisionCone | null = null;
+    if (import.meta.env.DEV) {
+      debugCone = new DebugVisionCone();
+      scene.add(debugCone.mesh);
+    }
     return {
       routeDef,
       model: character.model,
@@ -280,20 +339,26 @@ async function main(): Promise<void> {
 
   const movement = new MovementController();
   const keyboard = new KeyboardState();
-  const fps = new FpsMeter();
+  let fps: FpsMeter | null = null;
+  if (import.meta.env.DEV) {
+    fps = new FpsMeter();
+  }
   let telemetry = new Telemetry(); // reassigned on [ NEW ENGAGEMENT ]
   const clock = new THREE.Clock();
   const reportView = new ReportView();
 
-  const debugState = createDebugToggles((state) => {
-    extruded.setGridOverlay(state.gridOverlay);
-    extruded.setSurfaceTintDebug(state.surfaceTints);
-    lightGridMesh.visible = state.lightGrid;
-    renderer.domElement.style.filter = state.greyscale ? 'grayscale(1)' : '';
-    for (const guard of guards) {
-      guard.debugCone.mesh.visible = state.guardDebug;
-    }
-  });
+  let debugState: DebugState | null = null;
+  if (import.meta.env.DEV) {
+    debugState = createDebugToggles((state) => {
+      extruded.setGridOverlay(state.gridOverlay);
+      extruded.setSurfaceTintDebug(state.surfaceTints);
+      if (lightGridMesh) lightGridMesh.visible = state.lightGrid;
+      renderer.domElement.style.filter = state.greyscale ? 'grayscale(1)' : '';
+      for (const guard of guards) {
+        if (guard.debugCone) guard.debugCone.mesh.visible = state.guardDebug;
+      }
+    });
+  }
 
   // Always recording: cheap (a few numbers per tick), and it's what proves
   // determinism — see src/sim/determinism.test.ts and CLAUDE.md's
@@ -301,8 +366,9 @@ async function main(): Promise<void> {
   // for manual replay verification during the Phase 2 proof pass (record a
   // run, then __startReplay(__inputLog()) and watch it retrace live,
   // guards included); a real "save/load a run" UI is later scope.
-  Object.assign(window, {
-    __inputLog: () => inputSession.toLog(),
+  if (import.meta.env.DEV) {
+    Object.assign(window, {
+      __inputLog: () => inputSession.toLog(),
     __huntState: () => huntState,
     __wallBounds: () => extruded.wallBounds,
     __telemetry: () => telemetry.toWorksheet(),
@@ -325,14 +391,15 @@ async function main(): Promise<void> {
       nextGuards[index] = { ...nextGuards[index], ...partial };
       huntState = { ...huntState, guards: nextGuards };
     },
-    __setDebug: (partial: Partial<typeof debugState>) => {
+    __setDebug: (partial: Partial<DebugState>) => {
+      if (!debugState) return;
       Object.assign(debugState, partial);
       extruded.setGridOverlay(debugState.gridOverlay);
       extruded.setSurfaceTintDebug(debugState.surfaceTints);
-      lightGridMesh.visible = debugState.lightGrid;
+      if (lightGridMesh) lightGridMesh.visible = debugState.lightGrid;
       renderer.domElement.style.filter = debugState.greyscale ? 'grayscale(1)' : '';
       for (const guard of guards) {
-        guard.debugCone.mesh.visible = debugState.guardDebug;
+        if (guard.debugCone) guard.debugCone.mesh.visible = debugState.guardDebug;
       }
     },
     __forceIntent: (partial: Partial<MovementIntent>) => {
@@ -396,7 +463,8 @@ async function main(): Promise<void> {
     },
     // Phase 5: master volume (the Phase 6 settings knob, reachable early).
     __setVolume: (v: number) => audio.setMasterVolume(v),
-  });
+    });
+  }
 
   // Aim tracking: mouse position raycast onto the ground plane, kept
   // updated between ticks; right stick / R2 are polled fresh each tick
@@ -551,9 +619,11 @@ async function main(): Promise<void> {
       setGridMinOverride(effectiveFloor);
       scene.remove(extruded.group);
       extruded.dispose();
-      extruded = extrudeLevel(level, lightGrid);
-      extruded.setSurfaceTintDebug(debugState.surfaceTints);
-      extruded.setGridOverlay(debugState.gridOverlay);
+      extruded = extrudeLevel(level, lightGrid, { debugVisuals: import.meta.env.DEV });
+      if (import.meta.env.DEV && debugState) {
+        extruded.setSurfaceTintDebug(debugState.surfaceTints);
+        extruded.setGridOverlay(debugState.gridOverlay);
+      }
       scene.add(extruded.group);
     }
     // Assist mode applies at the next engagement (huntEnv is read in beginEngagement).
@@ -820,7 +890,15 @@ async function main(): Promise<void> {
         beamAppearanceFor(guardState.state),
         animationPhaseMs / 200,
       );
-      guard.debugCone.update(guardState.x, guardState.z, guardState.facingYaw, DETECTION.vision.rangeCells, DETECTION.vision.fovDegrees);
+      if (import.meta.env.DEV && guard.debugCone) {
+        guard.debugCone.update(
+          guardState.x,
+          guardState.z,
+          guardState.facingYaw,
+          DETECTION.vision.rangeCells,
+          DETECTION.vision.fovDegrees,
+        );
+      }
     }
 
     for (let i = 0; i < staffEntities.length; i++) {
@@ -892,51 +970,58 @@ async function main(): Promise<void> {
       shakeRemainingMs = Math.max(0, shakeRemainingMs - dtJuiceMs);
     }
 
-    const surface = surfaceAt(level, huntState.player.x, huntState.player.z);
-    const radius = noiseRadius(lastIntent.speed, surface);
-    noiseRing.setVisible(debugState.noiseRing);
-    noiseRing.update(huntState.player.x, huntState.player.z, radius);
-
     const maxSuspicion = Math.max(0, ...huntState.guards.map((g) => g.suspicion));
-    suspicionFillEl.style.width = `${maxSuspicion}%`;
-    suspicionFillEl.style.backgroundColor = maxSuspicion >= DETECTION.suspicion.curiousThreshold ? 'var(--alarm)' : 'var(--amber)';
     detainedFlashEl.style.opacity = detainedFlashRemainingMs > 0 ? '0.85' : '0';
 
-    const currentFps = fps.tick();
-    let gridHud: { x: number; y: number; simValue: number; rendered: number | null; curve: number } | null = null;
-    if (debugState.lightGrid) {
-      // The grid-vs-render agreement readout: the sim's value for the
-      // player's cell, what the floor geometry actually renders, and what
-      // the curve says it should render. The two right numbers must match.
-      const cx = Math.floor(huntState.player.x);
-      const cy = Math.floor(huntState.player.z);
-      const simValue = lightGrid[cy]?.[cx] ?? 0;
-      const rendered = extruded.sampleFloorBrightness(cx, cy);
-      gridHud = { x: cx, y: cy, simValue, rendered, curve: gridBrightness(simValue) };
+    playerHud.render(
+      buildPlayerHudPresentation({
+        mission,
+        player: huntState.player,
+        simTimeMs: huntState.simTimeMs,
+        suspicion: maxSuspicion,
+        alertLevel: huntState.alertLevel.level,
+        boltsUsed: huntState.bolts.length,
+        boltCount: THROW.boltCount,
+      }),
+    );
+
+    if (import.meta.env.DEV && noiseRing && debugState && fps && devDebugHud) {
+      const surface = surfaceAt(level, huntState.player.x, huntState.player.z);
+      const radius = noiseRadius(lastIntent.speed, surface);
+      noiseRing.setVisible(debugState.noiseRing);
+      noiseRing.update(huntState.player.x, huntState.player.z, radius);
+
+      let gridHud: { x: number; y: number; simValue: number; rendered: number | null; curve: number } | null = null;
+      if (debugState.lightGrid) {
+        // The grid-vs-render agreement readout: the sim's value for the
+        // player's cell, what the floor geometry actually renders, and what
+        // the curve says it should render. The two right numbers must match.
+        const cx = Math.floor(huntState.player.x);
+        const cy = Math.floor(huntState.player.z);
+        const simValue = lightGrid[cy]?.[cx] ?? 0;
+        const rendered = extruded.sampleFloorBrightness(cx, cy);
+        gridHud = { x: cx, y: cy, simValue, rendered, curve: gridBrightness(simValue) };
+      }
+      devDebugHud.render(
+        buildDebugLines({
+          currentFps: fps.tick(),
+          worstFps: fps.getWorstFps(),
+          speed: lastIntent.speed,
+          crouched: lastIntent.crouched,
+          noiseRadius: radius,
+          inputDevice: lastIntent.device,
+          simTimeMs: huntState.simTimeMs,
+          doors: huntState.doors.map((door) => ({
+            id: door.id,
+            open: isDoorOpen(door, huntState.simTimeMs, lockdown),
+          })),
+          guards: debugState.guardDebug
+            ? huntState.guards.map((guard) => ({ id: guard.id, state: guard.state, suspicion: guard.suspicion }))
+            : [],
+          grid: gridHud,
+        }),
+      );
     }
-    hudEl.textContent = buildHudLines({
-      clockLabel: nightClockLabel(huntState.simTimeMs),
-      mission,
-      currentFps,
-      worstFps: fps.getWorstFps(),
-      speed: lastIntent.speed,
-      crouched: lastIntent.crouched,
-      noiseRadius: radius,
-      device: lastIntent.device,
-      suspicion: maxSuspicion,
-      alertLevel: huntState.alertLevel.level,
-      simTimeMs: huntState.simTimeMs,
-      boltsUsed: huntState.bolts.length,
-      boltCount: THROW.boltCount,
-      doors: huntState.doors.map((door) => ({
-        id: door.id,
-        open: isDoorOpen(door, huntState.simTimeMs, lockdown),
-      })),
-      guards: debugState.guardDebug
-        ? huntState.guards.map((guard) => ({ id: guard.id, state: guard.state, suspicion: guard.suspicion }))
-        : [],
-      grid: gridHud,
-    }).join('\n');
 
     // Per-frame audio state: listener rides the player, faces where the
     // camera faces; the mutter follows the nearest searching guard; the
@@ -994,23 +1079,25 @@ async function main(): Promise<void> {
   // browser automation throttles to near-zero on a backgrounded/unfocused
   // tab (see the Phase 2 PR notes); __begin/__pause/__abandon drive the
   // Phase 6 flow the same way.
-  Object.assign(window, {
-    __forceFrame: (deltaSeconds = FIXED_STEP_SECONDS) => renderOnce(deltaSeconds),
-    __begin: () => beginEngagement(),
-    __pause: () => togglePause(),
-    __abandon: () => {
-      huntState = { ...huntState, mission: abandonMission(huntState.mission, huntState.simTimeMs) };
-      pause.hide();
-      endEngagement();
-    },
-    __appState: () => lifecycle.appState,
-    __applySettings: (partial: Partial<GameSettings>) => applySettings({ ...settings, ...partial }),
-  });
+  if (import.meta.env.DEV) {
+    Object.assign(window, {
+      __forceFrame: (deltaSeconds = FIXED_STEP_SECONDS) => renderOnce(deltaSeconds),
+      __begin: () => beginEngagement(),
+      __pause: () => togglePause(),
+      __abandon: () => {
+        huntState = { ...huntState, mission: abandonMission(huntState.mission, huntState.simTimeMs) };
+        pause.hide();
+        endEngagement();
+      },
+      __appState: () => lifecycle.appState,
+      __applySettings: (partial: Partial<GameSettings>) => applySettings({ ...settings, ...partial }),
+    });
+  }
 }
 
 main().catch((error) => {
   console.error('Failed to start Tailgate: After Hours:', error);
-  const hudEl = document.getElementById('hud');
+  const hudEl = document.getElementById('hud-objective');
   if (hudEl) {
     hudEl.textContent = `Failed to load: ${error instanceof Error ? error.message : String(error)}`;
   }

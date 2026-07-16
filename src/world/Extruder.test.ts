@@ -117,3 +117,20 @@ describe('extruded level resource ownership', () => {
     expect(materialDisposals).toBe(materials.size);
   });
 });
+
+describe('production debug boundary', () => {
+  it('does not allocate or activate grid and surface debug visuals when disabled', () => {
+    const production = extrudeLevel(level, grid, { debugVisuals: false });
+    let lineSegments = 0;
+    production.group.traverse((object) => {
+      if (object instanceof THREE.LineSegments) lineSegments += 1;
+    });
+    const visibilityBefore = production.group.children.map((child) => child.visible);
+
+    production.setGridOverlay(true);
+    production.setSurfaceTintDebug(true);
+
+    expect(lineSegments).toBe(0);
+    expect(production.group.children.map((child) => child.visible)).toEqual(visibilityBefore);
+  });
+});
