@@ -329,7 +329,7 @@
         <h3>Medium - Browser hardening - <code>vercel.ts:20</code></h3>
         <p><strong>What was wrong:</strong> the live deployment supplied HSTS but no project-level Content Security Policy, anti-framing rule, MIME sniffing protection, referrer policy or device-permission restrictions.</p>
         <p><strong>Why it matters:</strong> the game has little hostile data today, but missing headers leave the browser with permissive defaults. A later content feature or compromised asset would have fewer limits around it.</p>
-        <p><strong>Fix:</strong> Phase 1 adds a same-origin CSP with only the local <code>data:</code> and <code>blob:</code> allowances required by bundled fonts and GLTF textures, <code>frame-ancestors 'none'</code>, <code>X-Frame-Options: DENY</code>, <code>nosniff</code>, <code>no-referrer</code>, and disables camera, microphone and geolocation. The protected preview was checked with authenticated Vercel tooling.</p>
+        <p><strong>Fix:</strong> Phase 1 adds a same-origin CSP with only the local <code>data:</code> and <code>blob:</code> allowances required by bundled fonts and GLTF textures, <code>frame-ancestors 'none'</code>, <code>X-Frame-Options: DENY</code>, <code>nosniff</code>, <code>no-referrer</code>, and disables camera, microphone and geolocation. The protected preview was checked with authenticated Vercel tooling and a clean browser console.</p>
       </article>
 
       <article class="finding">
