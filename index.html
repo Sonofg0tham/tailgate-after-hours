@@ -158,9 +158,13 @@
       .hud-meter-row {
         display: grid;
         grid-template-columns: minmax(0, 1fr) auto;
-        gap: 0.7em;
+        gap: 0.35em 0.7em;
         align-items: center;
         margin-top: 0.72em;
+      }
+      .hud-meter-heading {
+        grid-column: 1 / -1;
+        margin: 0;
       }
       .hud-meter {
         box-sizing: border-box;
@@ -738,24 +742,25 @@
         </div>
       </section>
       <section id="hud-alert-region" class="hud-panel" data-alert-state="calm" aria-labelledby="hud-alert-heading">
-        <h2 id="hud-alert-heading" class="hud-label">ALERT STATE</h2>
+        <h2 id="hud-alert-heading" class="hud-label">SITE ALERT</h2>
         <div class="hud-alert-line">
           <span id="hud-alert-marker" class="hud-alert-marker" data-marker="circle" aria-hidden="true"></span>
           <strong id="hud-alert-label" class="hud-alert-value">CALM</strong>
         </div>
         <div class="hud-meter-row">
+          <span id="hud-suspicion-label" class="hud-label hud-meter-heading">GUARD SUSPICION</span>
           <div
             id="hud-suspicion-meter"
             class="hud-meter"
             role="meter"
-            aria-label="Suspicion"
+            aria-label="Guard suspicion"
             aria-valuemin="0"
             aria-valuemax="100"
             aria-valuenow="0"
           >
             <div id="hud-suspicion-fill" class="hud-meter-fill"></div>
           </div>
-          <output id="hud-suspicion-value" class="hud-meter-value" aria-label="Suspicion percentage">0%</output>
+          <output id="hud-suspicion-value" class="hud-meter-value" aria-label="Guard suspicion percentage">0%</output>
         </div>
       </section>
       <section id="hud-inventory-region" class="hud-panel" aria-labelledby="hud-inventory-heading">

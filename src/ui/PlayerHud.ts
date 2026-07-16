@@ -11,9 +11,11 @@ interface HudElement {
 export interface PlayerHudElements {
   objective: HudElement;
   clock: HudElement;
+  alertHeading: HudElement;
   alertRegion: HudElement;
   alertMarker: HudElement;
   alertLabel: HudElement;
+  suspicionLabel: HudElement;
   suspicionMeter: HudElement;
   suspicionFill: HudElement;
   suspicionValue: HudElement;
@@ -35,9 +37,11 @@ export class PlayerHud {
     elements.objective.textContent = model.objective;
     elements.clock.textContent = model.clock;
 
+    elements.alertHeading.textContent = model.alert.siteLabel;
     elements.alertRegion.dataset.alertState = model.alert.state;
     elements.alertMarker.dataset.marker = model.alert.marker;
     elements.alertLabel.textContent = model.alert.label;
+    elements.suspicionLabel.textContent = model.alert.suspicionLabel;
     elements.suspicionMeter.setAttribute('aria-valuenow', String(model.alert.suspicionPercent));
     elements.suspicionFill.style.setProperty('--hud-fill', `${model.alert.suspicionPercent}%`);
     elements.suspicionValue.textContent = model.alert.suspicionText;

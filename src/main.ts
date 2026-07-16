@@ -82,9 +82,11 @@ async function main(): Promise<void> {
   const appEl = document.getElementById('app');
   const objectiveEl = document.getElementById('hud-objective');
   const clockEl = document.getElementById('hud-clock');
+  const alertHeadingEl = document.getElementById('hud-alert-heading');
   const alertRegionEl = document.getElementById('hud-alert-region');
   const alertMarkerEl = document.getElementById('hud-alert-marker');
   const alertLabelEl = document.getElementById('hud-alert-label');
+  const suspicionLabelEl = document.getElementById('hud-suspicion-label');
   const suspicionMeterEl = document.getElementById('hud-suspicion-meter');
   const suspicionFillEl = document.getElementById('hud-suspicion-fill');
   const suspicionValueEl = document.getElementById('hud-suspicion-value');
@@ -101,9 +103,11 @@ async function main(): Promise<void> {
     !appEl ||
     !objectiveEl ||
     !clockEl ||
+    !alertHeadingEl ||
     !alertRegionEl ||
     !alertMarkerEl ||
     !alertLabelEl ||
+    !suspicionLabelEl ||
     !suspicionMeterEl ||
     !suspicionFillEl ||
     !suspicionValueEl ||
@@ -123,9 +127,11 @@ async function main(): Promise<void> {
   const playerHud = new PlayerHud({
     objective: objectiveEl,
     clock: clockEl,
+    alertHeading: alertHeadingEl,
     alertRegion: alertRegionEl,
     alertMarker: alertMarkerEl,
     alertLabel: alertLabelEl,
+    suspicionLabel: suspicionLabelEl,
     suspicionMeter: suspicionMeterEl,
     suspicionFill: suspicionFillEl,
     suspicionValue: suspicionValueEl,

@@ -11,9 +11,11 @@ export interface PlayerHudPresentation {
   objective: string;
   clock: string;
   alert: {
+    siteLabel: 'SITE ALERT';
     state: PlayerAlertState;
     label: 'CALM' | 'CAUTIOUS' | 'ALARM';
     marker: PlayerAlertMarker;
+    suspicionLabel: 'GUARD SUSPICION';
     suspicionPercent: number;
     suspicionText: string;
   };
@@ -83,7 +85,9 @@ export function buildPlayerHudPresentation(input: PlayerHudInput): PlayerHudPres
     objective: objectiveLabel(input.mission),
     clock: nightClockLabel(input.simTimeMs),
     alert: {
+      siteLabel: 'SITE ALERT',
       ...alert,
+      suspicionLabel: 'GUARD SUSPICION',
       suspicionPercent,
       suspicionText: `${suspicionPercent}%`,
     },

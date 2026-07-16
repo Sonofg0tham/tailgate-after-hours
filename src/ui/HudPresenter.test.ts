@@ -6,9 +6,11 @@ interface PlayerHudModel {
   objective: string;
   clock: string;
   alert: {
+    siteLabel: 'SITE ALERT';
     state: 'calm' | 'cautious' | 'alarm';
     label: 'CALM' | 'CAUTIOUS' | 'ALARM';
     marker: 'circle' | 'diamond' | 'triangle';
+    suspicionLabel: 'GUARD SUSPICION';
     suspicionPercent: number;
     suspicionText: string;
   };
@@ -72,11 +74,33 @@ describe('buildPlayerHudPresentation', () => {
     );
 
     expect(model.alert).toEqual({
+      siteLabel: 'SITE ALERT',
       state: expected.state,
       label: expected.label,
       marker: expected.marker,
+      suspicionLabel: 'GUARD SUSPICION',
       suspicionPercent: 43,
       suspicionText: '43%',
+    });
+  });
+
+  it('labels calm site alert separately from full guard suspicion', async () => {
+    const presenter = await loadPresenter();
+    expect(typeof presenter.buildPlayerHudPresentation).toBe('function');
+    if (!presenter.buildPlayerHudPresentation) return;
+
+    const model = presenter.buildPlayerHudPresentation(
+      playerInput(createMissionState(), { alertLevel: 0, suspicion: 100 }),
+    );
+
+    expect(model.alert).toEqual({
+      siteLabel: 'SITE ALERT',
+      state: 'calm',
+      label: 'CALM',
+      marker: 'circle',
+      suspicionLabel: 'GUARD SUSPICION',
+      suspicionPercent: 100,
+      suspicionText: '100%',
     });
   });
 

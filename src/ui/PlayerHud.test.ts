@@ -55,9 +55,11 @@ describe('PlayerHud', () => {
     const elements = {
       objective: element(),
       clock: element(),
+      alertHeading: element(),
       alertRegion: element(),
       alertMarker: element(),
       alertLabel: element(),
+      suspicionLabel: element(),
       suspicionMeter: element(),
       suspicionFill: element(),
       suspicionValue: element(),
@@ -75,9 +77,11 @@ describe('PlayerHud', () => {
       objective: 'RETURN TO SERVICE LIFT',
       clock: '03:12',
       alert: {
+        siteLabel: 'SITE ALERT',
         state: 'cautious',
         label: 'CAUTIOUS',
         marker: 'diamond',
+        suspicionLabel: 'GUARD SUSPICION',
         suspicionPercent: 43,
         suspicionText: '43%',
       },
@@ -91,9 +95,11 @@ describe('PlayerHud', () => {
 
     expect(elements.objective.textContent).toBe('RETURN TO SERVICE LIFT');
     expect(elements.clock.textContent).toBe('03:12');
+    expect(elements.alertHeading.textContent).toBe('SITE ALERT');
     expect(elements.alertRegion.dataset.alertState).toBe('cautious');
     expect(elements.alertMarker.dataset.marker).toBe('diamond');
     expect(elements.alertLabel.textContent).toBe('CAUTIOUS');
+    expect(elements.suspicionLabel.textContent).toBe('GUARD SUSPICION');
     expect(elements.suspicionMeter.attributes['aria-valuenow']).toBe('43');
     expect(elements.suspicionFill.style.values['--hud-fill']).toBe('43%');
     expect(elements.suspicionValue.textContent).toBe('43%');
@@ -114,9 +120,11 @@ describe('PlayerHud', () => {
     const elements = {
       objective: element(),
       clock: element(),
+      alertHeading: element(),
       alertRegion: element(),
       alertMarker: element(),
       alertLabel: element(),
+      suspicionLabel: element(),
       suspicionMeter: element(),
       suspicionFill: element(),
       suspicionValue: element(),
@@ -133,7 +141,15 @@ describe('PlayerHud', () => {
     hud.render({
       objective: 'PLANT DEVICE IN SERVER ROOM',
       clock: '01:00',
-      alert: { state: 'calm', label: 'CALM', marker: 'circle', suspicionPercent: 0, suspicionText: '0%' },
+      alert: {
+        siteLabel: 'SITE ALERT',
+        state: 'calm',
+        label: 'CALM',
+        marker: 'circle',
+        suspicionLabel: 'GUARD SUSPICION',
+        suspicionPercent: 0,
+        suspicionText: '0%',
+      },
       inventory: { deviceStatus: 'READY', boltsRemaining: 3 },
       interaction: null,
     });
@@ -142,6 +158,55 @@ describe('PlayerHud', () => {
     expect(elements.interactionPrompt.textContent).toBe('');
     expect(elements.interactionProgress.attributes['aria-valuenow']).toBe('0');
     expect(elements.interactionFill.style.values['--hud-fill']).toBe('0%');
+  });
+
+  it('renders calm site alert separately from 100 per cent guard suspicion', async () => {
+    const module = await loadPlayerHud();
+    expect(typeof module?.PlayerHud).toBe('function');
+    if (!module?.PlayerHud) return;
+
+    const elements = {
+      objective: element(),
+      clock: element(),
+      alertHeading: element(),
+      alertRegion: element(),
+      alertMarker: element(),
+      alertLabel: element(),
+      suspicionLabel: element(),
+      suspicionMeter: element(),
+      suspicionFill: element(),
+      suspicionValue: element(),
+      device: element(),
+      bolts: element(),
+      interactionRegion: element(),
+      interactionPrompt: element(),
+      interactionProgress: element(),
+      interactionFill: element(),
+      interactionValue: element(),
+    };
+    const hud = new module.PlayerHud(elements);
+
+    hud.render({
+      objective: 'PLANT DEVICE IN SERVER ROOM',
+      clock: '01:00',
+      alert: {
+        siteLabel: 'SITE ALERT',
+        state: 'calm',
+        label: 'CALM',
+        marker: 'circle',
+        suspicionLabel: 'GUARD SUSPICION',
+        suspicionPercent: 100,
+        suspicionText: '100%',
+      },
+      inventory: { deviceStatus: 'READY', boltsRemaining: 3 },
+      interaction: null,
+    });
+
+    expect(elements.alertHeading.textContent).toBe('SITE ALERT');
+    expect(elements.alertLabel.textContent).toBe('CALM');
+    expect(elements.alertMarker.dataset.marker).toBe('circle');
+    expect(elements.suspicionLabel.textContent).toBe('GUARD SUSPICION');
+    expect(elements.suspicionValue.textContent).toBe('100%');
   });
 });
 
