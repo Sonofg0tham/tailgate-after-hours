@@ -12,7 +12,7 @@ if (result.status !== 0) {
 }
 
 const compiled = JSON.parse(result.stdout) as {
-  headers?: Array<{ headers?: Array<{ key?: string }> }>;
+  headers?: Array<{ headers?: Array<{ key?: string; value?: string }> }>;
 };
 const headerKeys = new Set(compiled.headers?.flatMap((route) => route.headers?.map((header) => header.key) ?? []) ?? []);
 const requiredHeaderKeys = [
@@ -26,6 +26,14 @@ const missingHeaderKeys = requiredHeaderKeys.filter((key) => !headerKeys.has(key
 
 if (compiled.headers?.length !== 1 || missingHeaderKeys.length > 0) {
   throw new Error(`Compiled Vercel config is missing security headers: ${missingHeaderKeys.join(', ') || 'route'}.`);
+}
+
+const contentSecurityPolicy = compiled.headers[0]?.headers?.find(
+  (header) => header.key === 'Content-Security-Policy',
+)?.value;
+
+if (!contentSecurityPolicy?.includes("connect-src 'self' blob:")) {
+  throw new Error('Compiled Content Security Policy must permit same-origin and local GLTF blob requests.');
 }
 
 console.log(`Vercel config contains ${headerKeys.size} required security headers.`);

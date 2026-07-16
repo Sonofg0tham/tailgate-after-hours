@@ -6,7 +6,7 @@ const contentSecurityPolicy = [
   "style-src 'self' 'unsafe-inline'",
   "font-src 'self'",
   "img-src 'self' data: blob:",
-  "connect-src 'self'",
+  "connect-src 'self' blob:",
   "object-src 'none'",
   "base-uri 'self'",
   "frame-ancestors 'none'",
