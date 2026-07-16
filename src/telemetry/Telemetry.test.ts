@@ -24,7 +24,7 @@ describe('Telemetry', () => {
 
   it('counts detains separately from chase escapes', () => {
     const t = new Telemetry();
-    t.recordEvents([{ type: 'detain', guardId: 'g1' }]);
+    t.recordEvents([{ type: 'detain', guardId: 'g1', cause: 'guard-contact' }]);
     expect(t.summary().detains).toBe(1);
     expect(t.summary().chaseEscapes).toBe(0);
   });

@@ -71,10 +71,12 @@ export interface StepGuardContext {
   investigateOverride: { x: number; z: number } | null;
 }
 
+export type DetainCause = 'chase' | 'seen-contact' | 'guard-contact';
+
 export type GuardEvent =
   | { type: 'stateChanged'; guardId: string; from: GuardStateName; to: GuardStateName }
   | { type: 'radioCall'; guardId: string }
-  | { type: 'detain'; guardId: string }
+  | Readonly<{ type: 'detain'; guardId: string; cause: DetainCause }>
   | { type: 'tailgateWitnessed'; guardId: string };
 
 interface Sight {
@@ -106,7 +108,8 @@ export function stepGuard(guard: GuardState, ctx: StepGuardContext): { guard: Gu
 
   const events: GuardEvent[] = [];
   if (distanceMetres <= DETECTION.detainRadiusMetres) {
-    events.push({ type: 'detain', guardId: guard.id });
+    const cause: DetainCause = guard.state === 'alert' ? 'chase' : canSee ? 'seen-contact' : 'guard-contact';
+    events.push({ type: 'detain', guardId: guard.id, cause });
   }
 
   // A heard noise (bolt/footsteps, from the caller) or a witnessed tailgate

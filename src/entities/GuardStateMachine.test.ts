@@ -157,11 +157,27 @@ describe('ALERT', () => {
     expect(after.state).toBe('searching');
   });
 
-  it('emits a detain event on contact', () => {
-    const guard = freshGuard();
+  it('attributes contact by an already-alert guard to the chase', () => {
+    const guard: GuardState = { ...freshGuard(), state: 'alert', suspicion: 100 };
     const ctx = baseContext({ player: { x: guard.x, z: guard.z, facingYaw: 0 } }); // same cell
     const { events } = run(guard, ctx, 1);
-    expect(events.some((e) => e.type === 'detain')).toBe(true);
+    expect(events.find((event) => event.type === 'detain')).toMatchObject({ cause: 'chase' });
+  });
+});
+
+describe('detention causes', () => {
+  it('attributes visible contact by a non-alert guard to seen contact', () => {
+    const guard = { ...freshGuard(), facingYaw: 0 };
+    const ctx = baseContext({ player: { x: guard.x, z: guard.z + 0.5, facingYaw: 0 } });
+    const { events } = run(guard, ctx, 1);
+    expect(events.find((event) => event.type === 'detain')).toMatchObject({ cause: 'seen-contact' });
+  });
+
+  it('attributes unseen contact by a non-alert guard to guard contact', () => {
+    const guard = { ...freshGuard(), facingYaw: 0 };
+    const ctx = baseContext({ player: { x: guard.x, z: guard.z - 0.5, facingYaw: 0 } });
+    const { events } = run(guard, ctx, 1);
+    expect(events.find((event) => event.type === 'detain')).toMatchObject({ cause: 'guard-contact' });
   });
 });
 
