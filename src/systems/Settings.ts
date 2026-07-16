@@ -51,6 +51,13 @@ function defaultStore(): StorageLike | null {
 const clamp = (v: unknown, min: number, max: number, fallback: number): number =>
   typeof v === 'number' && Number.isFinite(v) ? Math.max(min, Math.min(max, v)) : fallback;
 
+export type SliderApplyMode = 'live' | 'release';
+
+/** Prevents an expensive setting from applying on both input and change events. */
+export function shouldApplySliderValue(mode: SliderApplyMode, eventType: 'input' | 'change'): boolean {
+  return mode === 'live' ? eventType === 'input' : eventType === 'change';
+}
+
 /** Loads and sanitises stored settings; anything missing or malformed falls back to its default. */
 export function loadSettings(store: StorageLike | null = defaultStore()): GameSettings {
   const d = SETTINGS_DEFAULTS;

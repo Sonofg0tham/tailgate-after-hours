@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { loadSettings, saveSettings, SETTINGS_DEFAULTS } from './Settings';
+import { loadSettings, saveSettings, SETTINGS_DEFAULTS, shouldApplySliderValue } from './Settings';
 import type { StorageLike } from './Progress';
 
 function mockStore(): StorageLike & { data: Record<string, string> } {
@@ -15,6 +15,13 @@ function mockStore(): StorageLike & { data: Record<string, string> } {
 }
 
 describe('Settings', () => {
+  it('commits expensive sliders on release while ordinary sliders remain live', () => {
+    expect(shouldApplySliderValue('live', 'input')).toBe(true);
+    expect(shouldApplySliderValue('live', 'change')).toBe(false);
+    expect(shouldApplySliderValue('release', 'input')).toBe(false);
+    expect(shouldApplySliderValue('release', 'change')).toBe(true);
+  });
+
   it('fresh visitor gets the accessibility-first defaults: shake 0, reduced motion, assist off', () => {
     const s = loadSettings(mockStore());
     expect(s).toEqual(SETTINGS_DEFAULTS);

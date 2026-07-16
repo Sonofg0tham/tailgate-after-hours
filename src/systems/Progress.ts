@@ -63,6 +63,48 @@ function empty(): Progress {
   return { bestRating: null, bestTimeSec: null, completions: 0, runs: [] };
 }
 
+function isRating(value: unknown): value is Rating {
+  return typeof value === 'string' && Object.prototype.hasOwnProperty.call(RATING_RANK, value);
+}
+
+function isNonNegativeNumber(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0;
+}
+
+function isCanonicalISODate(value: unknown): value is string {
+  if (typeof value !== 'string') {
+    return false;
+  }
+  const timestamp = Date.parse(value);
+  return Number.isFinite(timestamp) && new Date(timestamp).toISOString() === value;
+}
+
+function isTimeOnSite(value: unknown): value is string {
+  if (typeof value !== 'string') {
+    return false;
+  }
+  const match = /^(\d{2}):([0-5]\d)$/.exec(value);
+  if (!match) {
+    return false;
+  }
+  const hours = Number(match[1]);
+  const minutes = Number(match[2]);
+  return hours < 4 || (hours === 4 && minutes === 0);
+}
+
+function isRunRecord(value: unknown): value is RunRecord {
+  if (typeof value !== 'object' || value === null) {
+    return false;
+  }
+  const run = value as Partial<RunRecord>;
+  return (
+    isCanonicalISODate(run.endedISO) &&
+    isRating(run.rating) &&
+    isTimeOnSite(run.timeOnSite) &&
+    typeof run.assist === 'boolean'
+  );
+}
+
 export function loadProgress(store: StorageLike | null = defaultStore()): Progress {
   if (!store) {
     return empty();
@@ -83,11 +125,11 @@ export function loadProgress(store: StorageLike | null = defaultStore()): Progre
       return empty();
     }
     return {
-      bestRating: parsed.bestRating ?? null,
-      bestTimeSec: parsed.bestTimeSec ?? null,
-      completions: parsed.completions ?? 0,
+      bestRating: isRating(parsed.bestRating) && parsed.bestRating !== 'ABANDONED' ? parsed.bestRating : null,
+      bestTimeSec: isNonNegativeNumber(parsed.bestTimeSec) ? parsed.bestTimeSec : null,
+      completions: Number.isInteger(parsed.completions) && isNonNegativeNumber(parsed.completions) ? parsed.completions : 0,
       // v1 predates the history — migrate with an empty one.
-      runs: Array.isArray(parsed.runs) ? parsed.runs.slice(0, HISTORY_CAP) : [],
+      runs: Array.isArray(parsed.runs) ? parsed.runs.filter(isRunRecord).slice(0, HISTORY_CAP) : [],
     };
   } catch {
     return empty();

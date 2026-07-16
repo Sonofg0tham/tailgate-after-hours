@@ -44,6 +44,32 @@ describe('loadProgress', () => {
     expect(p.completions).toBe(5);
     expect(p.runs).toEqual([]);
   });
+
+  it('sanitises summary fields and drops malformed history records without losing valid ones', () => {
+    const store = mockStore();
+    store.data['tailgate-after-hours.progress'] = JSON.stringify({
+      version: 2,
+      bestRating: 'ROOT',
+      bestTimeSec: -20,
+      completions: 'many',
+      runs: [
+        { endedISO: '2026-07-15T01:02:03.000Z', rating: 'GHOST', timeOnSite: '01:42', assist: false },
+        { endedISO: '2026-02-31T01:02:03.000Z', rating: 'GHOST', timeOnSite: '01:42', assist: false },
+        { endedISO: '2026-07-15T01:02:03Z', rating: 'GHOST', timeOnSite: '01:42', assist: false },
+        { endedISO: '2026-07-15T01:02:03.000Z', rating: 'GHOST', timeOnSite: '05:00', assist: false },
+        { endedISO: '2026-07-15T01:02:03.000Z', rating: 'GHOST', timeOnSite: '04:01', assist: false },
+        { endedISO: null, rating: 'GHOST', timeOnSite: '01:42', assist: false },
+        { endedISO: 'not-a-date', rating: 'ROOT', timeOnSite: {}, assist: 'yes' },
+      ],
+    });
+
+    expect(loadProgress(store)).toEqual({
+      bestRating: null,
+      bestTimeSec: null,
+      completions: 0,
+      runs: [{ endedISO: '2026-07-15T01:02:03.000Z', rating: 'GHOST', timeOnSite: '01:42', assist: false }],
+    });
+  });
 });
 
 describe('recordCompletion', () => {

@@ -4,7 +4,7 @@ import { isWall, type ParsedLevel, type SurfaceType } from './level';
 import type { WallBounds } from '../physics/CapsuleCollider';
 import { gridBrightness } from '../config/renderLighting';
 
-import { buildFurniture } from './Furniture';
+import { buildFurniture, createFurnitureMaterials } from './Furniture';
 
 /** Also referenced by FollowCamera.ts to guarantee the camera never dips below wall height. */
 export const WALL_HEIGHT = 3;
@@ -22,6 +22,8 @@ const SURFACE_COLOR: Record<SurfaceType, number> = {
 export interface ExtrudedLevel {
   group: THREE.Group;
   wallBounds: WallBounds[];
+  /** Releases every GPU geometry and material owned by this visual level. */
+  dispose(): void;
   /** Toggle between surface-type shading (default) and per-zone debug tints. */
   setSurfaceTintDebug(enabled: boolean): void;
   /** Toggle a wireframe cell-grid overlay across the floor, for alignment checks. */
@@ -199,10 +201,11 @@ export function extrudeLevel(level: ParsedLevel, lightGrid?: readonly number[][]
   }
 
   // --- Furniture: procedural low-poly props, each blocks its cell. ---
+  const furnitureMaterials = createFurnitureMaterials();
   for (const placement of level.furniture) {
     const centerX = (placement.x + 0.5) * cellSize;
     const centerZ = (placement.y + 0.5) * cellSize;
-    const prop = buildFurniture(placement.type);
+    const prop = buildFurniture(placement.type, furnitureMaterials);
     prop.position.set(centerX, 0, centerZ);
     prop.traverse((child) => {
       child.castShadow = true;
@@ -223,9 +226,36 @@ export function extrudeLevel(level: ParsedLevel, lightGrid?: readonly number[][]
   gridOverlay.visible = false;
   group.add(gridOverlay);
 
+  let disposed = false;
+
   return {
     group,
     wallBounds,
+    dispose() {
+      if (disposed) {
+        return;
+      }
+      disposed = true;
+      const geometries = new Set<THREE.BufferGeometry>();
+      const materials = new Set<THREE.Material>();
+      group.traverse((object) => {
+        const renderable = object as THREE.Object3D & {
+          geometry?: THREE.BufferGeometry;
+          material?: THREE.Material | THREE.Material[];
+        };
+        if (renderable.geometry) {
+          geometries.add(renderable.geometry);
+        }
+        if (renderable.material) {
+          const list = Array.isArray(renderable.material) ? renderable.material : [renderable.material];
+          for (const material of list) {
+            materials.add(material);
+          }
+        }
+      });
+      for (const geometry of geometries) geometry.dispose();
+      for (const material of materials) material.dispose();
+    },
     setSurfaceTintDebug(enabled: boolean) {
       surfaceFloorGroup.visible = !enabled;
       zoneFloorGroup.visible = enabled;

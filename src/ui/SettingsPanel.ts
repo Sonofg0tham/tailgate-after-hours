@@ -1,10 +1,10 @@
-import type { GameSettings } from '../systems/Settings';
+import { shouldApplySliderValue, type GameSettings, type SliderApplyMode } from '../systems/Settings';
 
 /**
  * The settings overlay, reachable from the kiosk and the pause lanyard.
- * Every change fires onChange immediately (persist + live-apply are the
- * caller's job); the one deferred item — assist mode — says so on its own
- * label, in plain words with no shame copy.
+ * Lightweight settings apply live. Visibility commits on slider release so
+ * one drag cannot rebuild the rendered level dozens of times. Assist still
+ * applies from the next engagement, as its label explains.
  */
 export class SettingsPanel {
   private readonly root: HTMLElement;
@@ -46,7 +46,7 @@ export class SettingsPanel {
       slider('Visibility floor (how readable the dark is)', current.visibilityFloor, 0.1, 0.7, 0.02, (v) => {
         current.visibilityFloor = v;
         push();
-      }),
+      }, 'release'),
       toggle('High contrast', current.highContrast, (v) => {
         current.highContrast = v;
         push();
@@ -81,7 +81,15 @@ function el(tag: string, className?: string, text?: string): HTMLElement {
   return node;
 }
 
-function slider(label: string, value: number, min: number, max: number, step: number, set: (v: number) => void): HTMLElement {
+function slider(
+  label: string,
+  value: number,
+  min: number,
+  max: number,
+  step: number,
+  set: (v: number) => void,
+  applyMode: SliderApplyMode = 'live',
+): HTMLElement {
   const row = el('label', 'settings-row');
   const text = el('span', 'settings-label', label);
   const input = document.createElement('input');
@@ -91,11 +99,15 @@ function slider(label: string, value: number, min: number, max: number, step: nu
   input.step = String(step);
   input.value = String(value);
   const readout = el('span', 'settings-value', formatValue(value));
-  input.addEventListener('input', () => {
+  const update = (eventType: 'input' | 'change'): void => {
     const v = Number(input.value);
     readout.textContent = formatValue(v);
-    set(v);
-  });
+    if (shouldApplySliderValue(applyMode, eventType)) {
+      set(v);
+    }
+  };
+  input.addEventListener('input', () => update('input'));
+  input.addEventListener('change', () => update('change'));
   row.append(text, input, readout);
   return row;
 }

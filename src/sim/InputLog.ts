@@ -53,6 +53,62 @@ export class InputRecorder {
 }
 
 /**
+ * Owns every mutable input value that must be fresh for a new engagement.
+ * Keeping these together prevents a restarted run inheriting a replay queue,
+ * a forced control or recorded ticks from the previous engagement.
+ */
+export class EngagementInputSession {
+  private recorder: InputRecorder;
+  private nextTick = 0;
+  private replayQueue: InputLogEntry[] | null = null;
+
+  intentFrozen = false;
+  drivenIntent: MovementIntent | null = null;
+  drivenInteract: boolean | null = null;
+
+  constructor(
+    private readonly seed: string,
+    private readonly stepSeconds: number,
+    startState: PlayerState,
+  ) {
+    this.recorder = new InputRecorder(seed, stepSeconds, startState);
+  }
+
+  reset(startState: PlayerState): void {
+    this.recorder = new InputRecorder(this.seed, this.stepSeconds, startState);
+    this.nextTick = 0;
+    this.replayQueue = null;
+    this.intentFrozen = false;
+    this.drivenIntent = null;
+    this.drivenInteract = null;
+  }
+
+  record(
+    intent: MovementIntent,
+    throwAction: { x: number; z: number } | null = null,
+    interactHeld = false,
+  ): void {
+    this.recorder.record(this.nextTick++, intent, throwAction, interactHeld);
+  }
+
+  toLog(): InputLog {
+    return this.recorder.toLog();
+  }
+
+  startReplay(log: InputLog): void {
+    this.replayQueue = [...log.entries];
+  }
+
+  takeReplayEntry(): InputLogEntry | null {
+    const entry = this.replayQueue?.shift() ?? null;
+    if (!entry) {
+      this.replayQueue = null;
+    }
+    return entry;
+  }
+}
+
+/**
  * Folds an input log through stepPlayer, tick by tick, and returns the final
  * state. Two replays of the same log against the same walls always produce
  * the same result — see src/sim/determinism.test.ts.

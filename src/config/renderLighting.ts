@@ -98,3 +98,8 @@ export function gridBrightness(value: number): number {
   const clamped = Math.max(0, Math.min(1, value));
   return min + (max - min) * Math.pow(clamped, gamma);
 }
+
+/** Keeps high-DPI displays sharp without asking the GPU to render wasteful 3x or 4x framebuffers. */
+export function boundedDevicePixelRatio(value: number): number {
+  return Number.isFinite(value) && value > 0 ? Math.min(value, 2) : 1;
+}

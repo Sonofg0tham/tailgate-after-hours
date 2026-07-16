@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { clone as cloneSkeleton } from 'three/addons/utils/SkeletonUtils.js';
 
 /** The five clips the game blends between. Names match KayKit's Rig_Medium library exactly. */
 export interface CharacterClips {
@@ -40,11 +41,49 @@ export interface LoadedStaffCharacter {
 
 const loader = new GLTFLoader();
 
-function loadGltf(url: string): Promise<{ scene: THREE.Group; animations: THREE.AnimationClip[] }> {
+export interface GltfAsset {
+  scene: THREE.Group;
+  animations: THREE.AnimationClip[];
+}
+
+type GltfSourceLoader = (url: string) => Promise<GltfAsset>;
+type SceneCloner = (scene: THREE.Group) => THREE.Group;
+
+function loadGltfSource(url: string): Promise<GltfAsset> {
   return new Promise((resolve, reject) => {
     loader.load(url, resolve, undefined, reject);
   });
 }
+
+/** Shares each GLB parse while still handing every animated entity its own rig. */
+export class GltfAssetCache {
+  private readonly sources = new Map<string, Promise<GltfAsset>>();
+
+  constructor(
+    private readonly sourceLoader: GltfSourceLoader = loadGltfSource,
+    private readonly sceneCloner: SceneCloner = (scene) => cloneSkeleton(scene) as THREE.Group,
+  ) {}
+
+  load(url: string): Promise<GltfAsset> {
+    const cached = this.sources.get(url);
+    if (cached) {
+      return cached;
+    }
+    const pending = this.sourceLoader(url).catch((error: unknown) => {
+      this.sources.delete(url);
+      throw error;
+    });
+    this.sources.set(url, pending);
+    return pending;
+  }
+
+  async instantiate(url: string): Promise<GltfAsset> {
+    const source = await this.load(url);
+    return { scene: this.sceneCloner(source.scene), animations: source.animations };
+  }
+}
+
+const assets = new GltfAssetCache();
 
 function findClip(clips: THREE.AnimationClip[], name: string): THREE.AnimationClip {
   const clip = THREE.AnimationClip.findByName(clips, name);
@@ -63,10 +102,10 @@ function findClip(clips: THREE.AnimationClip[], name: string): THREE.AnimationCl
  */
 export async function loadCharacter(): Promise<LoadedCharacter> {
   const [body, general, movementBasic, movementAdvanced] = await Promise.all([
-    loadGltf('/models/rogue_hooded.glb'),
-    loadGltf('/models/rig_medium_general.glb'),
-    loadGltf('/models/rig_medium_movementbasic.glb'),
-    loadGltf('/models/rig_medium_movementadvanced.glb'),
+    assets.instantiate('/models/rogue_hooded.glb'),
+    assets.load('/models/rig_medium_general.glb'),
+    assets.load('/models/rig_medium_movementbasic.glb'),
+    assets.load('/models/rig_medium_movementadvanced.glb'),
   ]);
 
   return {
@@ -90,9 +129,9 @@ export async function loadCharacter(): Promise<LoadedCharacter> {
  */
 export async function loadGuardCharacter(): Promise<LoadedGuardCharacter> {
   const [body, general, movementBasic] = await Promise.all([
-    loadGltf('/models/knight.glb'),
-    loadGltf('/models/rig_medium_general.glb'),
-    loadGltf('/models/rig_medium_movementbasic.glb'),
+    assets.instantiate('/models/knight.glb'),
+    assets.load('/models/rig_medium_general.glb'),
+    assets.load('/models/rig_medium_movementbasic.glb'),
   ]);
 
   return {
@@ -115,9 +154,9 @@ export async function loadGuardCharacter(): Promise<LoadedGuardCharacter> {
  */
 export async function loadStaffCharacter(): Promise<LoadedStaffCharacter> {
   const [body, general, movementBasic] = await Promise.all([
-    loadGltf('/models/rogue_hooded.glb'),
-    loadGltf('/models/rig_medium_general.glb'),
-    loadGltf('/models/rig_medium_movementbasic.glb'),
+    assets.instantiate('/models/rogue_hooded.glb'),
+    assets.load('/models/rig_medium_general.glb'),
+    assets.load('/models/rig_medium_movementbasic.glb'),
   ]);
 
   return {

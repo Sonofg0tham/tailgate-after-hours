@@ -1,3 +1,4 @@
+import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
 import { cellBrightness, extrudeLevel, wallBrightness } from './Extruder';
 import { gridBrightness, RENDER_LIGHTING } from '../config/renderLighting';
@@ -68,5 +69,51 @@ describe('floor vertex colours agree with the light grid', () => {
   it('samples return null off-floor (walls, out of bounds)', () => {
     expect(extruded.sampleFloorBrightness(0, 0)).toBeNull();
     expect(extruded.sampleFloorBrightness(-3, 99)).toBeNull();
+  });
+});
+
+describe('extruded level resource ownership', () => {
+  it('does not share disposable materials between replaceable levels', () => {
+    const first = extrudeLevel(level, grid);
+    const second = extrudeLevel(level, grid);
+    const materialsOf = (root: THREE.Object3D): Set<THREE.Material> => {
+      const materials = new Set<THREE.Material>();
+      root.traverse((object) => {
+        const material = (object as THREE.Mesh).material;
+        if (material) {
+          for (const entry of Array.isArray(material) ? material : [material]) materials.add(entry);
+        }
+      });
+      return materials;
+    };
+
+    const firstMaterials = materialsOf(first.group);
+    const secondMaterials = materialsOf(second.group);
+    expect([...firstMaterials].filter((material) => secondMaterials.has(material))).toEqual([]);
+  });
+
+  it('disposes each unique geometry and material once, even if dispose is repeated', () => {
+    const owned = extrudeLevel(level, grid);
+    const geometries = new Set<THREE.BufferGeometry>();
+    const materials = new Set<THREE.Material>();
+    owned.group.traverse((object) => {
+      const renderable = object as THREE.Mesh;
+      if (renderable.geometry) geometries.add(renderable.geometry);
+      if (renderable.material) {
+        const list = Array.isArray(renderable.material) ? renderable.material : [renderable.material];
+        for (const material of list) materials.add(material);
+      }
+    });
+
+    let geometryDisposals = 0;
+    let materialDisposals = 0;
+    for (const geometry of geometries) geometry.dispose = () => { geometryDisposals += 1; };
+    for (const material of materials) material.dispose = () => { materialDisposals += 1; };
+
+    owned.dispose();
+    owned.dispose();
+
+    expect(geometryDisposals).toBe(geometries.size);
+    expect(materialDisposals).toBe(materials.size);
   });
 });

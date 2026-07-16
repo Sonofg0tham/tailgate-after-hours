@@ -4,7 +4,7 @@ import { extrudeLevel } from '../world/Extruder';
 import { buildLightGrid } from '../systems/LightModel';
 import { createDoorState, doorOpenLookup } from '../systems/DoorState';
 import { findPath } from '../systems/Pathfinding';
-import { InputRecorder, replay, replayHunt, type InputLog } from './InputLog';
+import { EngagementInputSession, InputRecorder, replay, replayHunt, type InputLog } from './InputLog';
 import { stepHunt, type HuntEnvironment, type HuntState } from './stepHunt';
 import { createGuardState, type GuardsData, type GuardState } from '../entities/GuardState';
 import { createStaffState, type StaffData } from '../entities/StaffState';
@@ -41,6 +41,40 @@ function scriptedRun(): InputLog {
   for (let i = 0; i < 20; i++) recorder.record(tick++, intent(0, 0, 'idle'));
   return recorder.toLog();
 }
+
+describe('engagement input session lifecycle', () => {
+  it('produces independent, replayable logs for consecutive engagements', () => {
+    const session = new EngagementInputSession('SESSION-TEST', STEP_SECONDS, startState);
+    session.intentFrozen = true;
+    session.drivenIntent = intent(1, 0, 'run');
+    session.drivenInteract = true;
+    session.startReplay(scriptedRun());
+    session.record(intent(0, -1));
+    const firstLog = session.toLog();
+
+    const nextStart = { ...startState, x: startState.x + 1 };
+    session.reset(nextStart);
+    session.record(intent(0, 1, 'creep'));
+    const secondLog = session.toLog();
+
+    expect(firstLog).toMatchObject({
+      startState,
+      entries: [{ tick: 0, intent: intent(0, -1), throwAction: null, interactHeld: false }],
+    });
+    expect(secondLog).toMatchObject({
+      startState: nextStart,
+      entries: [{ tick: 0, intent: intent(0, 1, 'creep'), throwAction: null, interactHeld: false }],
+    });
+    expect(firstLog.entries).not.toBe(secondLog.entries);
+    expect(replay(firstLog, extruded.wallBounds)).toEqual(replay(firstLog, extruded.wallBounds));
+    expect(replay(secondLog, extruded.wallBounds)).toEqual(replay(secondLog, extruded.wallBounds));
+    expect(replay(firstLog, extruded.wallBounds)).not.toEqual(replay(secondLog, extruded.wallBounds));
+    expect(session.takeReplayEntry()).toBeNull();
+    expect(session.intentFrozen).toBe(false);
+    expect(session.drivenIntent).toBeNull();
+    expect(session.drivenInteract).toBeNull();
+  });
+});
 
 describe('replay determinism (seed + input log)', () => {
   it('two replays of the same log are byte-identical', () => {

@@ -22,7 +22,7 @@ import { applyPaletteToCss, PALETTE_HEX } from './config/palette';
 import { DETECTION } from './config/detection';
 import { THROW } from './config/throw';
 import { MISSION } from './config/mission';
-import { gridBrightness, RENDER_LIGHTING } from './config/renderLighting';
+import { boundedDevicePixelRatio, gridBrightness, RENDER_LIGHTING } from './config/renderLighting';
 import { buildFixtures } from './world/Fixtures';
 import { AudioEngine } from './audio/AudioEngine';
 import { AUDIO } from './config/audio';
@@ -30,9 +30,9 @@ import { hasLineOfSight } from './systems/Vision';
 import { JUICE } from './config/juice';
 import { initMotion, motionLevel } from './systems/Motion';
 import { FixedTimestepLoop } from './sim/FixedTimestepLoop';
-import { InputRecorder, type InputLogEntry } from './sim/InputLog';
+import type { InputLog } from './sim/InputLog';
 import { stepHunt, type HuntEnvironment, type HuntState } from './sim/stepHunt';
-import { createMissionState, type MissionState } from './sim/MissionState';
+import { abandonMission, createMissionState } from './sim/MissionState';
 import type { MovementIntent } from './input/InputState';
 import { noiseRadius } from './systems/Noise';
 import { NoiseRingRenderer } from './systems/NoiseRingRenderer';
@@ -57,8 +57,9 @@ import { loadProgress, recordCompletion } from './systems/Progress';
 import { loadSettings, saveSettings, type GameSettings } from './systems/Settings';
 import { setMotionLevel } from './systems/Motion';
 import { setGridMinOverride } from './config/renderLighting';
-import { abandonMission } from './sim/MissionState';
+import { EngagementLifecycle } from './systems/EngagementLifecycle';
 import { Kiosk } from './ui/Kiosk';
+import { buildHudLines } from './ui/HudPresenter';
 import { PauseLanyard } from './ui/PauseLanyard';
 import { SettingsPanel } from './ui/SettingsPanel';
 import floor12 from './data/floor12.json';
@@ -66,30 +67,6 @@ import guardsDataRaw from './data/guards.json';
 import staffDataRaw from './data/staff.json';
 
 const FIXED_STEP_SECONDS = 1 / 60;
-
-/** The current-objective HUD line: plant, then exfil, plus a photo tally. */
-function objectiveLine(mission: MissionState): string {
-  const photosDone = MISSION.photos.filter((p) => mission.photos[p.id] !== null).length;
-  const photoTally = `  ·  photos ${photosDone}/${MISSION.photos.length}`;
-  if (mission.plantedAtMs === null) {
-    return `OBJECTIVE: plant the device (server room)${photoTally}`;
-  }
-  if (mission.exfilledAtMs === null) {
-    return `OBJECTIVE: exfil to the lift lobby${photoTally}`;
-  }
-  return `OBJECTIVE: complete${photoTally}`;
-}
-
-/** A progress readout while an interact hold is running, else blank. */
-function holdLine(mission: MissionState): string {
-  if (mission.holdObjectiveId === null || mission.holdProgressMs <= 0) {
-    return '';
-  }
-  const isPlant = mission.holdObjectiveId === MISSION.plant.id;
-  const holdMs = isPlant ? MISSION.plantHoldMs : MISSION.photoHoldMs;
-  const pct = Math.min(100, Math.round((mission.holdProgressMs / holdMs) * 100));
-  return `${isPlant ? 'PLANTING' : 'PHOTOGRAPHING'}... ${pct}%`;
-}
 
 async function main(): Promise<void> {
   applyPaletteToCss();
@@ -112,7 +89,7 @@ async function main(): Promise<void> {
   scene.background = new THREE.Color(PALETTE_HEX.base);
 
   const renderer = new THREE.WebGLRenderer({ antialias: true });
-  renderer.setPixelRatio(window.devicePixelRatio);
+  renderer.setPixelRatio(boundedDevicePixelRatio(window.devicePixelRatio));
   renderer.setSize(window.innerWidth, window.innerHeight);
   appEl.appendChild(renderer.domElement);
 
@@ -274,22 +251,18 @@ async function main(): Promise<void> {
 
   let huntState = freshHuntState();
   let lastIntent: MovementIntent = { directionX: 0, directionZ: 0, speed: 'idle', crouched: false, device: 'none' };
-  let tick = 0;
-  let replayQueue: InputLogEntry[] | null = null;
-  let intentFrozen = false;
+  const lifecycle = new EngagementLifecycle('phase-2-dev', FIXED_STEP_SECONDS, huntState.player);
+  const inputSession = lifecycle.inputSession;
   let detainedFlashRemainingMs = 0;
   let animationPhaseMs = 0;
   let prevDoorId: string | null = null;
-  let drivenIntent: MovementIntent | null = null;
-  let drivenInteract: boolean | null = null;
   let playerStepTimerMs = 0;
-  const guardStepTimersMs = guardsData.guards.map(() => 0);
+  let guardStepTimersMs = guardsData.guards.map(() => 0);
   let detainImpactRemainingMs = 0;
   let shakeRemainingMs = 0;
   // Phase 6 app flow: boot lands on the kiosk; the sim only advances while
   // running; the pause lanyard freezes it; the report freezes it via
-  // reportShown + the mission-phase early return.
-  let appState: 'kiosk' | 'running' | 'paused' = 'kiosk';
+  // the lifecycle report flag plus the mission-phase early return.
   let settings: GameSettings = loadSettings();
   let shakeIntensityLive = settings.shakeIntensity;
   let settingsOpen = false;
@@ -302,7 +275,6 @@ async function main(): Promise<void> {
   let telemetry = new Telemetry(); // reassigned on [ NEW ENGAGEMENT ]
   const clock = new THREE.Clock();
   const reportView = new ReportView();
-  let reportShown = false;
 
   const debugState = createDebugToggles((state) => {
     extruded.setGridOverlay(state.gridOverlay);
@@ -320,15 +292,14 @@ async function main(): Promise<void> {
   // for manual replay verification during the Phase 2 proof pass (record a
   // run, then __startReplay(__inputLog()) and watch it retrace live,
   // guards included); a real "save/load a run" UI is later scope.
-  const recorder = new InputRecorder('phase-2-dev', FIXED_STEP_SECONDS, huntState.player);
   Object.assign(window, {
-    __inputLog: () => recorder.toLog(),
+    __inputLog: () => inputSession.toLog(),
     __huntState: () => huntState,
     __wallBounds: () => extruded.wallBounds,
     __telemetry: () => telemetry.toWorksheet(),
-    __startReplay: (log: ReturnType<typeof recorder.toLog>) => {
+    __startReplay: (log: InputLog) => {
       huntState = { ...freshHuntState(), player: log.startState };
-      replayQueue = [...log.entries];
+      inputSession.startReplay(log);
     },
     // Dev-only positioning/debug hooks, for verification without needing to
     // simulate held input over real wall-clock time.
@@ -356,11 +327,11 @@ async function main(): Promise<void> {
       }
     },
     __forceIntent: (partial: Partial<MovementIntent>) => {
-      intentFrozen = true;
+      inputSession.intentFrozen = true;
       lastIntent = { ...lastIntent, ...partial };
     },
     __unfreezeIntent: () => {
-      intentFrozen = false;
+      inputSession.intentFrozen = false;
     },
     // Phase 3 verification hooks: doors/schedules run on simTimeMs, so
     // jumping it directly is how the three ingress windows and the tailgate
@@ -387,11 +358,18 @@ async function main(): Promise<void> {
     // (a closed dynamic door actually blocking movement) without a keyboard
     // or gamepad attached in this test environment.
     __driveIntent: (partial: Partial<MovementIntent>) => {
-      drivenIntent = { directionX: 0, directionZ: 0, speed: 'walk', crouched: false, device: 'keyboard', ...partial };
+      inputSession.drivenIntent = {
+        directionX: 0,
+        directionZ: 0,
+        speed: 'walk',
+        crouched: false,
+        device: 'keyboard',
+        ...partial,
+      };
     },
     __clearDrivenIntent: () => {
-      drivenIntent = null;
-      drivenInteract = null;
+      inputSession.drivenIntent = null;
+      inputSession.drivenInteract = null;
     },
     __throwBolt: (targetX: number, targetZ: number) => {
       huntState = {
@@ -405,7 +383,7 @@ async function main(): Promise<void> {
     // __driveIntent, without a keyboard attached in this throttled environment.
     __missionState: () => huntState.mission,
     __driveInteract: (held: boolean) => {
-      drivenInteract = held;
+      inputSession.drivenInteract = held;
     },
     // Phase 5: master volume (the Phase 6 settings knob, reachable early).
     __setVolume: (v: number) => audio.setMasterVolume(v),
@@ -448,25 +426,30 @@ async function main(): Promise<void> {
     reportView.hide();
     huntEnv.guardSpeedScale = settings.assistMode ? 0.9 : 1;
     huntState = freshHuntState();
-    telemetry = new Telemetry();
-    reportShown = false;
-    tick = 0;
-    prevDoorId = null;
-    playerStepTimerMs = 0;
-    guardStepTimersMs.fill(0);
-    detainedFlashRemainingMs = 0;
-    appState = 'running';
+    const reset = lifecycle.beginEngagement(huntState.player, huntState.guards.length);
+    lastIntent = reset.lastIntent;
+    pointerWorld = reset.pointerWorld;
+    mouseHeld = reset.mouseHeld;
+    prevThrowHeld = reset.previousThrowHeld;
+    telemetry = reset.telemetry;
+    prevDoorId = reset.previousDoorId;
+    playerStepTimerMs = reset.playerStepTimerMs;
+    guardStepTimersMs = reset.guardStepTimersMs;
+    detainedFlashRemainingMs = reset.detainedFlashRemainingMs;
+    detainImpactRemainingMs = reset.detainImpactRemainingMs;
+    shakeRemainingMs = reset.shakeRemainingMs;
+    boltLandingRingRemainingMs = reset.boltLandingRingRemainingMs;
+    boltLandingRing.setVisible(false);
+    movement.reset();
     audio.unlock();
   }
 
   /** The engagement is over (exfil, dawn, or abandoned): file the report, persist, raise the document. */
   function endEngagement(): void {
-    if (reportShown) {
+    if (!lifecycle.beginReport()) {
       return;
     }
-    reportShown = true;
     pause.hide();
-    appState = 'running'; // the report itself freezes the sim via reportShown + phase
     const mission = huntState.mission;
     const endMs = mission.exfilledAtMs ?? mission.abandonedAtMs ?? huntState.simTimeMs;
     const report = generateReport(mission);
@@ -490,7 +473,7 @@ async function main(): Promise<void> {
   }
 
   function showKiosk(): void {
-    appState = 'kiosk';
+    lifecycle.showKiosk();
     kiosk.show(loadProgress());
   }
 
@@ -499,15 +482,13 @@ async function main(): Promise<void> {
       closeSettings();
       return;
     }
-    if (reportShown || huntState.mission.phase !== 'infiltrating') {
+    if (!lifecycle.togglePause(huntState.mission.phase === 'infiltrating')) {
       return;
     }
-    if (appState === 'running') {
-      appState = 'paused';
+    if (lifecycle.appState === 'paused') {
       pause.show();
-    } else if (appState === 'paused') {
+    } else {
       pause.hide();
-      appState = 'running';
     }
   }
 
@@ -539,6 +520,7 @@ async function main(): Promise<void> {
       const effectiveFloor = settings.highContrast ? Math.max(settings.visibilityFloor, 0.5) : settings.visibilityFloor;
       setGridMinOverride(effectiveFloor);
       scene.remove(extruded.group);
+      extruded.dispose();
       extruded = extrudeLevel(level, lightGrid);
       extruded.setSurfaceTintDebug(debugState.surfaceTints);
       extruded.setGridOverlay(debugState.gridOverlay);
@@ -610,19 +592,19 @@ async function main(): Promise<void> {
     let intent: MovementIntent;
     let throwAction: { x: number; z: number } | null = null;
     let interactHeld: boolean;
-    if (intentFrozen) {
+    const replayEntry =
+      inputSession.intentFrozen || inputSession.drivenIntent ? null : inputSession.takeReplayEntry();
+    if (inputSession.intentFrozen) {
       intent = { directionX: 0, directionZ: 0, speed: 'idle', crouched: false, device: lastIntent.device };
-      interactHeld = drivenInteract ?? false;
-    } else if (drivenIntent) {
-      intent = drivenIntent;
-      interactHeld = drivenInteract ?? false;
-    } else if (replayQueue && replayQueue.length > 0) {
-      const entry = replayQueue.shift()!;
-      intent = entry.intent;
-      throwAction = entry.throwAction;
-      interactHeld = entry.interactHeld;
+      interactHeld = inputSession.drivenInteract ?? false;
+    } else if (inputSession.drivenIntent) {
+      intent = inputSession.drivenIntent;
+      interactHeld = inputSession.drivenInteract ?? false;
+    } else if (replayEntry) {
+      intent = replayEntry.intent;
+      throwAction = replayEntry.throwAction;
+      interactHeld = replayEntry.interactHeld;
     } else {
-      replayQueue = null;
       intent = movement.update();
       interactHeld = InteractInput.read(keyboard);
       const throwInput = ThrowInput.read();
@@ -634,13 +616,13 @@ async function main(): Promise<void> {
         });
       }
       prevThrowHeld = throwHeld;
-      recorder.record(tick++, intent, throwAction, interactHeld);
+      inputSession.record(intent, throwAction, interactHeld);
     }
 
     const boltsBefore = huntState.bolts;
     const result = stepHunt(huntState, intent, throwAction, interactHeld, huntEnv, deltaSeconds, dtMs);
     huntState = result.state;
-    if (!intentFrozen) {
+    if (!inputSession.intentFrozen) {
       lastIntent = intent;
     }
 
@@ -738,12 +720,13 @@ async function main(): Promise<void> {
 
     // Mission just ended (exfil or dawn): file the report. Abandon reaches
     // the same endEngagement directly from the pause lanyard.
-    if (huntState.mission.phase !== 'infiltrating' && !reportShown) {
+    if (huntState.mission.phase !== 'infiltrating' && !lifecycle.reportShown) {
       endEngagement();
     }
   });
 
   window.addEventListener('resize', () => {
+    renderer.setPixelRatio(boundedDevicePixelRatio(window.devicePixelRatio));
     renderer.setSize(window.innerWidth, window.innerHeight);
     followCamera.setAspect(window.innerWidth / window.innerHeight);
   });
@@ -759,7 +742,7 @@ async function main(): Promise<void> {
     animationPhaseMs += frameDelta * 1000;
     // The sim only advances mid-engagement: the kiosk and the pause lanyard
     // freeze it entirely (the scene still renders behind them).
-    if (appState === 'running') {
+    if (lifecycle.appState === 'running') {
       fixedLoop.advance(frameDelta);
     }
 
@@ -767,7 +750,7 @@ async function main(): Promise<void> {
     const pads = navigator.getGamepads ? navigator.getGamepads() : [];
     const pad = pads.find((p) => p !== null);
     const startHeld = (pad?.buttons[9]?.value ?? 0) > 0.5;
-    if (startHeld && !prevStartHeld && appState !== 'kiosk') {
+    if (startHeld && !prevStartHeld && lifecycle.appState !== 'kiosk') {
       togglePause();
     }
     prevStartHeld = startHeld;
@@ -878,25 +861,7 @@ async function main(): Promise<void> {
     detainedFlashEl.style.opacity = detainedFlashRemainingMs > 0 ? '0.85' : '0';
 
     const currentFps = fps.tick();
-    const hudLines = [
-      `${nightClockLabel(huntState.simTimeMs)}   ${objectiveLine(mission)}`,
-      holdLine(mission),
-      '',
-      `fps ${currentFps.toFixed(0)} (worst ${fps.getWorstFps().toFixed(0)})`,
-      `speed ${lastIntent.speed}${lastIntent.crouched ? ' (crouched)' : ''}`,
-      `noise ${radius.toFixed(1)}m`,
-      `device ${lastIntent.device}`,
-      `suspicion ${maxSuspicion.toFixed(0)}`,
-      `alert level ${huntState.alertLevel.level}`,
-      `sim ${(huntState.simTimeMs / 1000).toFixed(1)}s`,
-      `bolts ${huntState.bolts.length}/${THROW.boltCount}`,
-      ...huntState.doors.map((d) => `${d.id}: ${isDoorOpen(d, huntState.simTimeMs, lockdown) ? 'open' : 'shut'}`),
-    ];
-    if (debugState.guardDebug) {
-      for (const guardState of huntState.guards) {
-        hudLines.push(`${guardState.id}: ${guardState.state} (${guardState.suspicion.toFixed(0)})`);
-      }
-    }
+    let gridHud: { x: number; y: number; simValue: number; rendered: number | null; curve: number } | null = null;
     if (debugState.lightGrid) {
       // The grid-vs-render agreement readout: the sim's value for the
       // player's cell, what the floor geometry actually renders, and what
@@ -905,11 +870,31 @@ async function main(): Promise<void> {
       const cy = Math.floor(huntState.player.z);
       const simValue = lightGrid[cy]?.[cx] ?? 0;
       const rendered = extruded.sampleFloorBrightness(cx, cy);
-      hudLines.push(
-        `grid @(${cx},${cy}) sim ${simValue.toFixed(2)} | rendered ${rendered?.toFixed(2) ?? 'n/a'} | curve ${gridBrightness(simValue).toFixed(2)}`,
-      );
+      gridHud = { x: cx, y: cy, simValue, rendered, curve: gridBrightness(simValue) };
     }
-    hudEl.textContent = hudLines.join('\n');
+    hudEl.textContent = buildHudLines({
+      clockLabel: nightClockLabel(huntState.simTimeMs),
+      mission,
+      currentFps,
+      worstFps: fps.getWorstFps(),
+      speed: lastIntent.speed,
+      crouched: lastIntent.crouched,
+      noiseRadius: radius,
+      device: lastIntent.device,
+      suspicion: maxSuspicion,
+      alertLevel: huntState.alertLevel.level,
+      simTimeMs: huntState.simTimeMs,
+      boltsUsed: huntState.bolts.length,
+      boltCount: THROW.boltCount,
+      doors: huntState.doors.map((door) => ({
+        id: door.id,
+        open: isDoorOpen(door, huntState.simTimeMs, lockdown),
+      })),
+      guards: debugState.guardDebug
+        ? huntState.guards.map((guard) => ({ id: guard.id, state: guard.state, suspicion: guard.suspicion }))
+        : [],
+      grid: gridHud,
+    }).join('\n');
 
     // Per-frame audio state: listener rides the player, faces where the
     // camera faces; the mutter follows the nearest searching guard; the
@@ -976,7 +961,7 @@ async function main(): Promise<void> {
       pause.hide();
       endEngagement();
     },
-    __appState: () => appState,
+    __appState: () => lifecycle.appState,
     __applySettings: (partial: Partial<GameSettings>) => applySettings({ ...settings, ...partial }),
   });
 }
