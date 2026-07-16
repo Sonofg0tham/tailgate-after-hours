@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { loadProgress, markBriefingSeen, recordCompletion, type StorageLike } from './Progress';
+import {
+  loadProgress,
+  markBriefingSeen,
+  recordCompletion,
+  resolveBriefingSession,
+  type StorageLike,
+} from './Progress';
 
 function mockStore(): StorageLike & { data: Record<string, string> } {
   return {
@@ -47,6 +53,23 @@ describe('markBriefingSeen', () => {
 
     expect(() => markBriefingSeen(store)).not.toThrow();
     expect(markBriefingSeen(null).briefingSeen).toBe(true);
+  });
+
+  it('bypasses the briefing on a second Begin after the acknowledgement write fails', () => {
+    const store = mockStore();
+    store.setItem = () => {
+      throw new Error('blocked');
+    };
+
+    let session = resolveBriefingSession(false, loadProgress(store));
+    expect(session.shouldShowBriefing).toBe(true);
+
+    session = resolveBriefingSession(session.briefingSeen, markBriefingSeen(store));
+    expect(loadProgress(store).briefingSeen).toBe(false);
+    expect(session.shouldShowBriefing).toBe(false);
+
+    session = resolveBriefingSession(session.briefingSeen, loadProgress(store));
+    expect(session).toEqual({ briefingSeen: true, shouldShowBriefing: false });
   });
 });
 
@@ -225,6 +248,28 @@ describe('recordCompletion', () => {
 
     expect(recordCompletion('GHOST', 100, RUN, store).briefingSeen).toBe(true);
     expect(loadProgress(store).briefingSeen).toBe(true);
+  });
+
+  it('retries a retained acknowledgement in the next successful completion write', () => {
+    const store = mockStore();
+    const write = store.setItem.bind(store);
+    let rejectNextWrite = true;
+    store.setItem = (key, value) => {
+      if (rejectNextWrite) {
+        rejectNextWrite = false;
+        throw new Error('transient');
+      }
+      write(key, value);
+    };
+
+    const marked = markBriefingSeen(store);
+    expect(marked.briefingSeen).toBe(true);
+    expect(loadProgress(store).briefingSeen).toBe(false);
+
+    const completed = recordCompletion('GHOST', 100, RUN, store, marked.briefingSeen);
+
+    expect(completed.briefingSeen).toBe(true);
+    expect(loadProgress(store)).toMatchObject({ briefingSeen: true, completions: 1 });
   });
 
   it('ABANDONED is filed in history but never a best (the Patch Tuesday rule)', () => {

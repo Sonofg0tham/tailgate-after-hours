@@ -159,17 +159,28 @@ export function markBriefingSeen(store: StorageLike | null = defaultStore()): Pr
   return next;
 }
 
+/** Keep a browser-session acknowledgement even when persisted progress is stale after a failed write. */
+export function resolveBriefingSession(
+  briefingSeenInSession: boolean,
+  progress: Progress,
+): { briefingSeen: boolean; shouldShowBriefing: boolean } {
+  const briefingSeen = briefingSeenInSession || progress.briefingSeen;
+  return { briefingSeen, shouldShowBriefing: !briefingSeen };
+}
+
 /**
  * Fold one finished engagement into stored progress: file the run in the
  * history (newest first), bump completions, keep the better rating (never
  * ABANDONED), keep the faster time (finished outcomes only). Returns the
- * new progress whether or not the write succeeded.
+ * new progress whether or not the write succeeded. A retained briefing
+ * acknowledgement is folded into the same write so a later success retries it.
  */
 export function recordCompletion(
   rating: Rating,
   timeSec: number,
   run: { timeOnSite: string; assist: boolean },
   store: StorageLike | null = defaultStore(),
+  briefingSeenInSession = false,
 ): Progress {
   const current = loadProgress(store);
 
@@ -197,7 +208,7 @@ export function recordCompletion(
     bestTimeSec,
     completions: current.completions + 1,
     runs,
-    briefingSeen: current.briefingSeen,
+    briefingSeen: current.briefingSeen || briefingSeenInSession,
   };
 
   if (store) {

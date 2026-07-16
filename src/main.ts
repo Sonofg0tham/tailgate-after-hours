@@ -53,7 +53,7 @@ import { DoorPanel } from './entities/DoorPanel';
 import { Telemetry } from './telemetry/Telemetry';
 import { generateReport } from './report/generateReport';
 import { ReportView } from './report/ReportView';
-import { loadProgress, markBriefingSeen, recordCompletion } from './systems/Progress';
+import { loadProgress, markBriefingSeen, recordCompletion, resolveBriefingSession } from './systems/Progress';
 import { loadSettings, saveSettings, type GameSettings } from './systems/Settings';
 import { setMotionLevel } from './systems/Motion';
 import { setGridMinOverride } from './config/renderLighting';
@@ -276,6 +276,7 @@ async function main(): Promise<void> {
   let settingsReturnTo: 'kiosk' | 'pause' = 'kiosk';
   let prevStartHeld = false;
   let suppressInteractUntilRelease = false;
+  let briefingSeenInSession = loadProgress().briefingSeen;
 
   const movement = new MovementController();
   const keyboard = new KeyboardState();
@@ -455,7 +456,9 @@ async function main(): Promise<void> {
   }
 
   function requestEngagement(): void {
-    if (loadProgress().briefingSeen) {
+    const briefingSession = resolveBriefingSession(briefingSeenInSession, loadProgress());
+    briefingSeenInSession = briefingSession.briefingSeen;
+    if (!briefingSession.shouldShowBriefing) {
       beginEngagement();
       return;
     }
@@ -473,10 +476,17 @@ async function main(): Promise<void> {
     const endMs = mission.exfilledAtMs ?? mission.abandonedAtMs ?? huntState.simTimeMs;
     const report = generateReport(mission);
     telemetry.recordMissionEnd(mission, report.rating, endMs);
-    recordCompletion(report.rating, Math.round(endMs / 1000), {
-      timeOnSite: report.summary.timeOnSite,
-      assist: (huntEnv.guardSpeedScale ?? 1) < 1,
-    });
+    const completedProgress = recordCompletion(
+      report.rating,
+      Math.round(endMs / 1000),
+      {
+        timeOnSite: report.summary.timeOnSite,
+        assist: (huntEnv.guardSpeedScale ?? 1) < 1,
+      },
+      undefined,
+      briefingSeenInSession,
+    );
+    briefingSeenInSession = resolveBriefingSession(briefingSeenInSession, completedProgress).briefingSeen;
     audio.play('reportPrint');
     reportView.show(report, {
       onNewEngagement: () => {
@@ -557,7 +567,7 @@ async function main(): Promise<void> {
     },
   );
   const briefing = new BriefingView(() => {
-    markBriefingSeen();
+    briefingSeenInSession = resolveBriefingSession(briefingSeenInSession, markBriefingSeen()).briefingSeen;
     audio.unlock();
     audio.play('uiClick');
     beginEngagement(true);
