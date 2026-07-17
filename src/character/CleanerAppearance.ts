@@ -73,12 +73,22 @@ export function applyCleanerAppearance(model: THREE.Object3D): CleanerAppearance
   accessories.name = 'cleaner-appearance';
 
   const beltMaterial = new THREE.MeshStandardMaterial({ color: BELT_COLOUR, roughness: 0.9 });
-  const uniformMaterial = new THREE.MeshStandardMaterial({ color: CLEANER_UNIFORM_COLOUR, roughness: 0.88 });
+  const uniformMaterial = new THREE.MeshStandardMaterial({
+    color: CLEANER_UNIFORM_COLOUR,
+    roughness: 0.88,
+    side: THREE.DoubleSide,
+  });
   const packMaterial = new THREE.MeshStandardMaterial({ color: PACK_COLOUR, roughness: 0.85 });
   const bottleMaterial = new THREE.MeshStandardMaterial({ color: BOTTLE_COLOUR, roughness: 0.55 });
 
   const beltGeometry = new THREE.BoxGeometry(0.82, 0.08, 0.72);
-  const uniformGeometry = new THREE.BoxGeometry(0.78, 0.58, 0.08);
+  const uniformShape = new THREE.Shape()
+    .moveTo(-0.29, -0.29)
+    .lineTo(0.29, -0.29)
+    .lineTo(0.21, 0.29)
+    .lineTo(-0.21, 0.29)
+    .closePath();
+  const uniformGeometry = new THREE.ShapeGeometry(uniformShape);
   const packGeometry = new THREE.BoxGeometry(0.34, 0.45, 0.16);
   const bottleGeometry = new THREE.CylinderGeometry(0.055, 0.065, 0.24, 8);
 

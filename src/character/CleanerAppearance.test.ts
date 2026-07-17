@@ -59,6 +59,7 @@ describe('cleaner appearance', () => {
     const apron = cleaner.model.getObjectByName('cleaner-uniform-apron');
     const pack = cleaner.model.getObjectByName('cleaner-cleaning-pack');
     expect(apron).toBeInstanceOf(THREE.Mesh);
+    expect((apron as THREE.Mesh).geometry).toBeInstanceOf(THREE.ShapeGeometry);
     expect(apron!.position.z).toBeGreaterThan(0.35);
     expect(cleaner.model.getObjectByName('cleaner-utility-belt')).toBeInstanceOf(THREE.Mesh);
     expect(pack).toBeInstanceOf(THREE.Mesh);
