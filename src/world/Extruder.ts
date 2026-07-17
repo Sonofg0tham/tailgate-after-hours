@@ -10,6 +10,34 @@ import { buildFurniture, createFurnitureMaterials } from './Furniture';
 export const WALL_HEIGHT = 3;
 const WALL_COLOR = 0x454c58;
 
+/** Shared physical dimensions for decorative door frames, in cell units. */
+export const DOOR_FRAME_LAYOUT = Object.freeze({
+  slabWidthCells: 0.92,
+  postThicknessCells: 0.04,
+});
+
+/**
+ * Positions the two frame posts at the ends of the slab's long axis. The
+ * orientation matches DoorPanel: a thin-X slab spans Z, while a thin-Z slab
+ * spans X.
+ */
+export function doorFramePostOffsets(
+  opensEastWest: boolean,
+  cellSize: number,
+): readonly (readonly [number, number])[] {
+  const edgeCentre =
+    ((DOOR_FRAME_LAYOUT.slabWidthCells + DOOR_FRAME_LAYOUT.postThicknessCells) * cellSize) / 2;
+  return opensEastWest
+    ? [
+        [0, -edgeCentre],
+        [0, edgeCentre],
+      ]
+    : [
+        [-edgeCentre, 0],
+        [edgeCentre, 0],
+      ];
+}
+
 // Default (non-debug) floor shading: distinguishable by surface type alone,
 // each a different luminance so the greyscale check still reads. Debug
 // "surface tints" mode swaps to the per-zone `tint` from the level data.
@@ -191,25 +219,14 @@ export function extrudeLevel(
 
       const centerX = (x + 0.5) * cellSize;
       const centerZ = (y + 0.5) * cellSize;
-      // A door with walls to its north/south is a gap in an east-west wall
-      // run (posts sit on the east/west edges); otherwise it's a gap in a
-      // north-south run (posts sit on the north/south edges).
       const opensEastWest = isWall(level, x, y - 1) && isWall(level, x, y + 1);
       const postHeight = WALL_HEIGHT * 0.8;
-      const postThickness = cellSize * 0.08;
-
-      const offsets = opensEastWest
-        ? [
-            [-cellSize / 2 + postThickness / 2, 0],
-            [cellSize / 2 - postThickness / 2, 0],
-          ]
-        : [
-            [0, -cellSize / 2 + postThickness / 2],
-            [0, cellSize / 2 - postThickness / 2],
-          ];
+      const postThickness = cellSize * DOOR_FRAME_LAYOUT.postThicknessCells;
+      const offsets = doorFramePostOffsets(opensEastWest, cellSize);
 
       for (const [dx, dz] of offsets) {
         const post = new THREE.Mesh(new THREE.BoxGeometry(postThickness, postHeight, postThickness), frameMaterial);
+        post.name = `door-frame:${x},${y}`;
         post.position.set(centerX + dx, postHeight / 2, centerZ + dz);
         group.add(post);
       }
