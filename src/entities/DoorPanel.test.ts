@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import { describe, expect, it, vi } from 'vitest';
-import type { DoorKindDef } from '../world/level';
+import { FollowCamera } from '../camera/FollowCamera';
+import floor12 from '../data/floor12.json';
+import { parseLevel, type DoorKindDef, type LevelData } from '../world/level';
 
 interface DoorAccessPresentation {
   state: 'OPEN' | 'SECURED' | 'LOCKDOWN';
@@ -86,7 +88,7 @@ describe('selectDoorAccessPresentation', () => {
 });
 
 describe('DoorPanel', () => {
-  it('keeps each access label within the doorway transom and clear of neighbouring labels', async () => {
+  it('keeps each access label compact, on the upper door face, and clear of neighbouring labels', async () => {
     const module = await loadDoorPanel();
     expect(module.DOOR_LABEL_LAYOUT).toBeDefined();
     if (!module.DOOR_LABEL_LAYOUT) return;
@@ -98,9 +100,82 @@ describe('DoorPanel', () => {
     expect(layout.heightCells).toBeCloseTo(layout.widthCells * (192 / 512));
 
     const doorTop = 3 * 0.8;
-    expect(layout.centreY - layout.heightCells / 2).toBeGreaterThan(doorTop);
-    expect(layout.centreY + layout.heightCells / 2).toBeLessThan(3);
+    expect(layout.centreY).toBeGreaterThanOrEqual(doorTop * 0.75);
+    expect(layout.centreY).toBeLessThanOrEqual(doorTop);
   });
+
+  it.each([
+    { width: 1440, height: 900 },
+    { width: 1024, height: 768 },
+  ])(
+    'keeps every real lobby door name inside the $width x $height viewport at spawn',
+    async ({ width, height }) => {
+      const module = await loadDoorPanel();
+      expect(module.DOOR_LABEL_LAYOUT).toBeDefined();
+      if (!module.DOOR_LABEL_LAYOUT) return;
+
+      const level = parseLevel(floor12 as LevelData);
+      expect(level.doors.map((door) => door.id)).toEqual(['fire-stairs', 'lobby', 'lift']);
+
+      const originalWindow = Object.getOwnPropertyDescriptor(globalThis, 'window');
+      Object.defineProperty(globalThis, 'window', {
+        configurable: true,
+        value: { addEventListener: vi.fn() },
+      });
+
+      try {
+        const followCamera = new FollowCamera(width / height);
+        followCamera.follow(
+          (level.playerStart.x + 0.5) * level.cellSize,
+          (level.playerStart.y + 0.5) * level.cellSize,
+          0,
+          0,
+          1 / 60,
+        );
+        followCamera.camera.updateMatrixWorld();
+
+        const cameraRight = new THREE.Vector3(1, 0, 0).applyQuaternion(followCamera.camera.quaternion);
+        const cameraUp = new THREE.Vector3(0, 1, 0).applyQuaternion(followCamera.camera.quaternion);
+        const halfWidth = (module.DOOR_LABEL_LAYOUT.widthCells * level.cellSize) / 2;
+        const halfHeight = (module.DOOR_LABEL_LAYOUT.heightCells * level.cellSize) / 2;
+
+        for (const door of level.doors) {
+          const centre = new THREE.Vector3(
+            (door.x + 0.5) * level.cellSize,
+            module.DOOR_LABEL_LAYOUT.centreY,
+            (door.y + 0.5) * level.cellSize,
+          );
+          const projectedCorners: { x: number; y: number }[] = [];
+          for (const horizontal of [-1, 1]) {
+            for (const vertical of [-1, 1]) {
+              const ndc = centre
+                .clone()
+                .addScaledVector(cameraRight, horizontal * halfWidth)
+                .addScaledVector(cameraUp, vertical * halfHeight)
+                .project(followCamera.camera);
+              projectedCorners.push({
+                x: ((ndc.x + 1) * width) / 2,
+                y: ((1 - ndc.y) * height) / 2,
+              });
+            }
+          }
+
+          const xs = projectedCorners.map((corner) => corner.x);
+          const ys = projectedCorners.map((corner) => corner.y);
+          expect(Math.min(...xs), `${door.displayName} left edge`).toBeGreaterThanOrEqual(0);
+          expect(Math.max(...xs), `${door.displayName} right edge`).toBeLessThanOrEqual(width);
+          expect(Math.min(...ys), `${door.displayName} top edge`).toBeGreaterThanOrEqual(0);
+          expect(Math.max(...ys), `${door.displayName} bottom edge`).toBeLessThanOrEqual(height);
+        }
+      } finally {
+        if (originalWindow) {
+          Object.defineProperty(globalThis, 'window', originalWindow);
+        } else {
+          Reflect.deleteProperty(globalThis, 'window');
+        }
+      }
+    },
+  );
 
   it('keeps the physical open cue, redraws the readable label, and disposes every owned resource', async () => {
     const written: string[] = [];
@@ -161,7 +236,7 @@ describe('DoorPanel', () => {
       if (!(sprite instanceof THREE.Sprite)) return;
       expect(sprite.scale.x).toBeCloseTo(1.3);
       expect(sprite.scale.y).toBeCloseTo(1.3 * (192 / 512));
-      expect(sprite.position.y).toBeCloseTo(2.7);
+      expect(sprite.position.y).toBeCloseTo(2.4);
       const spriteMaterial = sprite.material as THREE.SpriteMaterial;
       expect(spriteMaterial.map).not.toBeNull();
       if (!spriteMaterial.map) return;

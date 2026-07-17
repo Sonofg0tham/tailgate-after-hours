@@ -21,14 +21,14 @@ const LABEL_WIDTH = 512;
 const LABEL_HEIGHT = 192;
 
 /**
- * Compact overhead sign proportions. The label sits wholly in the transom
- * above the 2.4 m door panel, with enough horizontal separation for the
- * three doors in the lobby to remain distinct at the default camera.
+ * Compact overhead sign proportions. The label straddles the top edge of
+ * the 2.4 m door face, low enough to stay fully inside the default camera's
+ * spawn view while leaving the three lobby signs visually separate.
  */
 export const DOOR_LABEL_LAYOUT = Object.freeze({
   widthCells: 1.3,
   heightCells: 1.3 * (LABEL_HEIGHT / LABEL_WIDTH),
-  centreY: PANEL_HEIGHT + (WALL_HEIGHT - PANEL_HEIGHT) / 2,
+  centreY: PANEL_HEIGHT,
 });
 
 export type DoorAccessState = 'OPEN' | 'SECURED' | 'LOCKDOWN';
