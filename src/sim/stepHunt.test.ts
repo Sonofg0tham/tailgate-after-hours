@@ -12,7 +12,7 @@ const LEVEL_DATA: LevelData = {
   width: 20,
   height: 20,
   legend: { '#': { kind: 'wall' }, '.': { kind: 'floor', zone: 'room' } },
-  zones: { room: { label: 'Room', surface: 'concrete', tint: '#000' } },
+  zones: { room: { label: 'Room', surface: 'concrete', tint: '#000', visualProfile: 'service' } },
   layout: Array.from({ length: 20 }, (_, y) =>
     y === 0 || y === 19 ? '#'.repeat(20) : '#' + '.'.repeat(18) + '#',
   ),

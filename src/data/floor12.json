@@ -87,47 +87,56 @@
     "corridor": {
       "label": "Corridor",
       "surface": "concrete",
-      "tint": "#4A4F58"
+      "tint": "#4A4F58",
+      "visualProfile": "service"
     },
     "reception": {
       "label": "Reception & lift lobby",
       "surface": "tile",
-      "tint": "#5A6272"
+      "tint": "#5A6272",
+      "visualProfile": "lobby"
     },
     "office": {
       "label": "Open-plan office",
       "surface": "carpet",
-      "tint": "#3A4550"
+      "tint": "#3A4550",
+      "visualProfile": "office"
     },
     "kitchen": {
       "label": "Kitchen",
       "surface": "tile",
-      "tint": "#5A6272"
+      "tint": "#5A6272",
+      "visualProfile": "service"
     },
     "print-room": {
       "label": "Print room",
       "surface": "tile",
-      "tint": "#5A6272"
+      "tint": "#5A6272",
+      "visualProfile": "service"
     },
     "server-room": {
       "label": "Server room",
       "surface": "concrete",
-      "tint": "#4A4F58"
+      "tint": "#4A4F58",
+      "visualProfile": "server"
     },
     "corner-office": {
       "label": "Corner office",
       "surface": "carpet",
-      "tint": "#3A4550"
+      "tint": "#3A4550",
+      "visualProfile": "office"
     },
     "maintenance": {
       "label": "Maintenance corridor",
       "surface": "concrete",
-      "tint": "#4A4F58"
+      "tint": "#4A4F58",
+      "visualProfile": "service"
     },
     "ledge": {
       "label": "Window-washing ledge",
       "surface": "concrete",
-      "tint": "#2A2F38"
+      "tint": "#2A2F38",
+      "visualProfile": "edge"
     }
   },
   "layout": [
