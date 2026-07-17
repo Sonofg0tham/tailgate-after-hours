@@ -25,6 +25,7 @@ import { THROW } from './config/throw';
 import { boundedDevicePixelRatio, gridBrightness, RENDER_LIGHTING } from './config/renderLighting';
 import { buildFixtures } from './world/Fixtures';
 import { MissionVisuals } from './world/MissionVisuals';
+import { buildWorldDressing } from './world/WorldDressing';
 import { AudioEngine } from './audio/AudioEngine';
 import { AUDIO } from './config/audio';
 import { hasLineOfSight } from './systems/Vision';
@@ -193,6 +194,9 @@ async function main(): Promise<void> {
   const fixtures = buildFixtures(level);
   scene.add(fixtures.group);
   window.addEventListener('pagehide', () => fixtures.dispose(), { once: true });
+  const worldDressing = buildWorldDressing(level);
+  scene.add(worldDressing.group);
+  window.addEventListener('pagehide', () => worldDressing.dispose(), { once: true });
 
   // The nystagmus visibility floor's character half: the operator always
   // reads, whatever the darkness. Concealment is unchanged — sim never sees this.
@@ -677,6 +681,7 @@ async function main(): Promise<void> {
     shakeIntensityLive = settings.shakeIntensity;
     document.documentElement.style.setProperty('--hud-scale', String(settings.hudScale));
     document.body.classList.toggle('high-contrast', settings.highContrast);
+    worldDressing.setHighContrast(settings.highContrast);
     if (floorChanged) {
       // High contrast also raises the darkness floor — part of the same
       // readability contract. Re-extrude the visual through the new curve;
