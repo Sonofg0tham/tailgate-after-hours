@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { Telemetry } from './Telemetry';
 import { LIGHTING } from '../config/lighting';
+import { MISSION } from '../config/mission';
 import { createMissionState, type MissionState } from '../sim/MissionState';
 
 const NO_OBSERVATION = { anyGuardCanSeePlayer: false, closedDoorWaitTarget: null } as const;
@@ -169,6 +170,22 @@ describe('Telemetry', () => {
     const noIngress = new Telemetry();
     noIngress.recordMissionEnd({ ...createMissionState(), phase: 'abandoned', abandonedAtMs: 30_000 }, 'ABANDONED', 30_000);
     expect(noIngress.summary().timeOnSiteSeconds).toBe(30);
+  });
+
+  it('pins dawn time on site to the configured deadline when sim time has overshot', () => {
+    const t = new Telemetry();
+    t.recordMissionEnd(
+      {
+        ...createMissionState(),
+        phase: 'dawn',
+        ingressRoute: 'lift',
+        ingressAtMs: MISSION.dawnDeadlineMs - 60_000,
+      },
+      'DAWN',
+      MISSION.dawnDeadlineMs + 1000 / 60,
+    );
+
+    expect(t.summary().timeOnSiteSeconds).toBe(60);
   });
 
   it('includes the detention cause and comparison metrics in the worksheet', () => {

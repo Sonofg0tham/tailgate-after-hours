@@ -1,4 +1,5 @@
 import { LIGHTING } from '../config/lighting';
+import { MISSION } from '../config/mission';
 import { stampClock } from '../systems/NightClock';
 import type { GuardEvent } from '../entities/GuardStateMachine';
 import type { MissionState } from '../sim/MissionState';
@@ -154,9 +155,10 @@ export class Telemetry {
    * truth, so the worksheet agrees with the Engagement Report exactly.
    */
   recordMissionEnd(mission: MissionState, rating: Rating, endMs: number): void {
+    const missionEndMs = mission.phase === 'dawn' ? MISSION.dawnDeadlineMs : endMs;
     this.rating = rating;
     this.ingressRoute = mission.ingressRoute;
-    this.timeOnSiteSeconds = (endMs - (mission.ingressAtMs ?? 0)) / 1000;
+    this.timeOnSiteSeconds = (missionEndMs - (mission.ingressAtMs ?? 0)) / 1000;
     this.cleanRunTimeSeconds =
       rating === 'GHOST' &&
       mission.phase === 'exfilled' &&
