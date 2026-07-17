@@ -27,7 +27,19 @@ describe('AudioEngine before unlock', () => {
   it('update, duck and volume are safe before unlock', () => {
     const e = engine();
     expect(() =>
-      e.update({ listenerX: 0, listenerZ: 0, forwardX: 0, forwardZ: -1, zone: 'corridor', mutterSource: null, dawn: true }, 1000),
+      e.update(
+        {
+          listenerX: 0,
+          listenerZ: 0,
+          forwardX: 0,
+          forwardZ: -1,
+          zone: 'corridor',
+          mutterSource: null,
+          alertLevel: 2,
+          dawn: true,
+        },
+        1000,
+      ),
     ).not.toThrow();
     expect(() => e.duck(0.3, 500)).not.toThrow();
     expect(() => e.setMasterVolume(0.5)).not.toThrow();

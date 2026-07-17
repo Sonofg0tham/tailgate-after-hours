@@ -1152,6 +1152,7 @@ async function main(): Promise<void> {
         forwardZ: camForward.z / forwardLen,
         zone: level.cells[Math.floor(huntState.player.z)]?.[Math.floor(huntState.player.x)]?.zone ?? null,
         mutterSource,
+        alertLevel: huntState.alertLevel.level,
         dawn: huntState.mission.phase === 'dawn',
       },
       performance.now(),
