@@ -1,4 +1,5 @@
 import { RENDER_LIGHTING } from '../config/renderLighting';
+import { MOVEMENT } from '../config/movement';
 import type { MotionLevel } from './Motion';
 import type { StorageLike } from './Progress';
 
@@ -16,6 +17,8 @@ export interface GameSettings {
   masterVolume: number;
   /** HUD/UI text scale, 0.8..1.6. */
   hudScale: number;
+  /** Fixed-tilt follow-camera distance in metres, 5..12. */
+  cameraDistance: number;
   /** UI contrast boost plus a raised visibility-floor preset. */
   highContrast: boolean;
   /** Screen shake master, 0..1. Ships 0. */
@@ -30,6 +33,7 @@ export interface GameSettings {
 export const SETTINGS_DEFAULTS: GameSettings = {
   masterVolume: 0.8,
   hudScale: 1,
+  cameraDistance: MOVEMENT.camera.defaultDistance,
   highContrast: false,
   shakeIntensity: 0,
   visibilityFloor: RENDER_LIGHTING.grid.min,
@@ -38,7 +42,14 @@ export const SETTINGS_DEFAULTS: GameSettings = {
 };
 
 const STORAGE_KEY = 'tailgate-after-hours.settings';
-const VERSION = 1;
+const VERSION = 2;
+
+export const CAMERA_DISTANCE = Object.freeze({
+  min: MOVEMENT.camera.minDistance,
+  max: MOVEMENT.camera.maxDistance,
+  step: 0.5,
+  default: MOVEMENT.camera.defaultDistance,
+});
 
 function defaultStore(): StorageLike | null {
   try {
@@ -51,6 +62,47 @@ function defaultStore(): StorageLike | null {
 const clamp = (v: unknown, min: number, max: number, fallback: number): number =>
   typeof v === 'number' && Number.isFinite(v) ? Math.max(min, Math.min(max, v)) : fallback;
 
+type StoredSettings = Record<string, unknown>;
+
+function isStoredSettings(value: unknown): value is StoredSettings {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function sanitiseCommonSettings(p: StoredSettings): Omit<GameSettings, 'cameraDistance'> {
+  const d = SETTINGS_DEFAULTS;
+  return {
+    masterVolume: clamp(p.masterVolume, 0, 1, d.masterVolume),
+    hudScale: clamp(p.hudScale, 0.8, 1.6, d.hudScale),
+    highContrast: p.highContrast === true,
+    shakeIntensity: clamp(p.shakeIntensity, 0, 1, d.shakeIntensity),
+    visibilityFloor: clamp(p.visibilityFloor, 0.1, 0.7, d.visibilityFloor),
+    motionLevel: p.motionLevel === 'full' ? 'full' : 'reduced',
+    assistMode: p.assistMode === true,
+  };
+}
+
+/** V1 had no camera field, so it is deliberately ignored during migration. */
+function migrateV1(p: StoredSettings): GameSettings {
+  return {
+    ...sanitiseCommonSettings(p),
+    cameraDistance: CAMERA_DISTANCE.default,
+  };
+}
+
+function sanitiseV2(p: StoredSettings): GameSettings {
+  return {
+    ...sanitiseCommonSettings(p),
+    cameraDistance: clamp(p.cameraDistance, CAMERA_DISTANCE.min, CAMERA_DISTANCE.max, CAMERA_DISTANCE.default),
+  };
+}
+
+export type SliderApplyMode = 'live' | 'release';
+
+/** Prevents an expensive setting from applying on both input and change events. */
+export function shouldApplySliderValue(mode: SliderApplyMode, eventType: 'input' | 'change'): boolean {
+  return mode === 'live' ? eventType === 'input' : eventType === 'change';
+}
+
 /** Loads and sanitises stored settings; anything missing or malformed falls back to its default. */
 export function loadSettings(store: StorageLike | null = defaultStore()): GameSettings {
   const d = SETTINGS_DEFAULTS;
@@ -62,19 +114,13 @@ export function loadSettings(store: StorageLike | null = defaultStore()): GameSe
     if (!raw) {
       return { ...d };
     }
-    const p = JSON.parse(raw) as Partial<GameSettings> & { version?: number };
-    if (p.version !== VERSION) {
+    const parsed: unknown = JSON.parse(raw);
+    if (!isStoredSettings(parsed)) {
       return { ...d };
     }
-    return {
-      masterVolume: clamp(p.masterVolume, 0, 1, d.masterVolume),
-      hudScale: clamp(p.hudScale, 0.8, 1.6, d.hudScale),
-      highContrast: p.highContrast === true,
-      shakeIntensity: clamp(p.shakeIntensity, 0, 1, d.shakeIntensity),
-      visibilityFloor: clamp(p.visibilityFloor, 0.1, 0.7, d.visibilityFloor),
-      motionLevel: p.motionLevel === 'full' ? 'full' : 'reduced',
-      assistMode: p.assistMode === true,
-    };
+    if (parsed.version === 1) return migrateV1(parsed);
+    if (parsed.version === VERSION) return sanitiseV2(parsed);
+    return { ...d };
   } catch {
     return { ...d };
   }

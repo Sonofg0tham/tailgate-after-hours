@@ -6,11 +6,12 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc --noEmit && vite build",
+    "build": "tsc --noEmit && vite build && vite-node scripts/validate-production-bundle.ts",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "test": "vitest run",
+    "validate:vercel": "vite-node scripts/validate-vercel-config.ts",
     "lit-vs-dark": "vite-node scripts/lit-vs-dark.ts",
     "sample-report": "vite-node scripts/sample-report.ts",
     "balance-run": "vite-node scripts/balance-run.ts"
@@ -23,6 +24,7 @@
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@types/three": "^0.182.0",
+    "@vercel/config": "0.0.32",
     "eslint": "^10.6.0",
     "typescript": "^5.8.0",
     "typescript-eslint": "^8.63.0",

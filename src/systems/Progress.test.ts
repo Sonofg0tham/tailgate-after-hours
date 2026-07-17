@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { loadProgress, recordCompletion, type StorageLike } from './Progress';
+import {
+  loadProgress,
+  markBriefingSeen,
+  recordCompletion,
+  resolveBriefingSession,
+  type StorageLike,
+} from './Progress';
 
 function mockStore(): StorageLike & { data: Record<string, string> } {
   return {
@@ -15,9 +21,67 @@ function mockStore(): StorageLike & { data: Record<string, string> } {
 
 const RUN = { timeOnSite: '01:30', assist: false };
 
+describe('markBriefingSeen', () => {
+  it('marks the briefing seen while preserving every other progress field', () => {
+    const store = mockStore();
+    const existing = {
+      bestRating: 'PROFESSIONAL' as const,
+      bestTimeSec: 240,
+      completions: 3,
+      runs: [{ endedISO: '2026-07-15T01:02:03.000Z', rating: 'NOISY' as const, timeOnSite: '01:42', assist: true }],
+      briefingSeen: false,
+    };
+    store.data['tailgate-after-hours.progress'] = JSON.stringify({ version: 3, ...existing });
+
+    const marked = markBriefingSeen(store);
+
+    expect(marked).toEqual({ ...existing, briefingSeen: true });
+    expect(JSON.parse(store.data['tailgate-after-hours.progress'])).toEqual({
+      version: 3,
+      ...existing,
+      briefingSeen: true,
+    });
+  });
+
+  it('returns marked progress when storage rejects the write', () => {
+    const store: StorageLike = {
+      getItem: () => null,
+      setItem: () => {
+        throw new Error('blocked');
+      },
+    };
+
+    expect(() => markBriefingSeen(store)).not.toThrow();
+    expect(markBriefingSeen(null).briefingSeen).toBe(true);
+  });
+
+  it('bypasses the briefing on a second Begin after the acknowledgement write fails', () => {
+    const store = mockStore();
+    store.setItem = () => {
+      throw new Error('blocked');
+    };
+
+    let session = resolveBriefingSession(false, loadProgress(store));
+    expect(session.shouldShowBriefing).toBe(true);
+
+    session = resolveBriefingSession(session.briefingSeen, markBriefingSeen(store));
+    expect(loadProgress(store).briefingSeen).toBe(false);
+    expect(session.shouldShowBriefing).toBe(false);
+
+    session = resolveBriefingSession(session.briefingSeen, loadProgress(store));
+    expect(session).toEqual({ briefingSeen: true, shouldShowBriefing: false });
+  });
+});
+
 describe('loadProgress', () => {
   it('returns empty progress on a fresh store', () => {
-    expect(loadProgress(mockStore())).toEqual({ bestRating: null, bestTimeSec: null, completions: 0, runs: [] });
+    expect(loadProgress(mockStore())).toEqual({
+      bestRating: null,
+      bestTimeSec: null,
+      completions: 0,
+      runs: [],
+      briefingSeen: false,
+    });
   });
 
   it('returns empty progress when storage is unavailable', () => {
@@ -43,6 +107,113 @@ describe('loadProgress', () => {
     expect(p.bestTimeSec).toBe(240);
     expect(p.completions).toBe(5);
     expect(p.runs).toEqual([]);
+    expect(p.briefingSeen).toBe(true);
+  });
+
+  it('migrates a v2 record without losing summary fields or valid run history', () => {
+    const store = mockStore();
+    const runs = [
+      { endedISO: '2026-07-15T01:02:03.000Z', rating: 'GHOST' as const, timeOnSite: '01:42', assist: false },
+      { endedISO: '2026-07-14T02:03:04.000Z', rating: 'NOISY' as const, timeOnSite: '02:07', assist: true },
+    ];
+    store.data['tailgate-after-hours.progress'] = JSON.stringify({
+      version: 2,
+      bestRating: 'GHOST',
+      bestTimeSec: 102,
+      completions: 2,
+      runs,
+    });
+
+    expect(loadProgress(store)).toEqual({
+      bestRating: 'GHOST',
+      bestTimeSec: 102,
+      completions: 2,
+      runs,
+      briefingSeen: true,
+    });
+  });
+
+  it.each([1, 2])('migrates a zero-completion v%s record as unseen', (version) => {
+    const store = mockStore();
+    store.data['tailgate-after-hours.progress'] = JSON.stringify({
+      version,
+      bestRating: null,
+      bestTimeSec: null,
+      completions: 0,
+      runs: [],
+    });
+
+    expect(loadProgress(store).briefingSeen).toBe(false);
+  });
+
+  it('honours only a boolean briefing flag in v3 data', () => {
+    const store = mockStore();
+    store.data['tailgate-after-hours.progress'] = JSON.stringify({
+      version: 3,
+      bestRating: null,
+      bestTimeSec: null,
+      completions: 0,
+      runs: [],
+      briefingSeen: 'yes',
+    });
+    expect(loadProgress(store).briefingSeen).toBe(false);
+
+    store.data['tailgate-after-hours.progress'] = JSON.stringify({
+      version: 3,
+      bestRating: null,
+      bestTimeSec: null,
+      completions: 0,
+      runs: [],
+      briefingSeen: true,
+    });
+    expect(loadProgress(store).briefingSeen).toBe(true);
+  });
+
+  it('returns fresh progress for unsupported versions', () => {
+    const store = mockStore();
+    store.data['tailgate-after-hours.progress'] = JSON.stringify({
+      version: 99,
+      bestRating: 'GHOST',
+      bestTimeSec: 10,
+      completions: 8,
+      runs: [],
+      briefingSeen: true,
+    });
+
+    expect(loadProgress(store)).toEqual({
+      bestRating: null,
+      bestTimeSec: null,
+      completions: 0,
+      runs: [],
+      briefingSeen: false,
+    });
+  });
+
+  it('sanitises summary fields and drops malformed history records without losing valid ones', () => {
+    const store = mockStore();
+    store.data['tailgate-after-hours.progress'] = JSON.stringify({
+      version: 2,
+      bestRating: 'ROOT',
+      bestTimeSec: -20,
+      completions: 'many',
+      runs: [
+        { endedISO: '2026-07-15T01:02:03.000Z', rating: 'GHOST', timeOnSite: '01:42', assist: false },
+        { endedISO: '2026-02-31T01:02:03.000Z', rating: 'GHOST', timeOnSite: '01:42', assist: false },
+        { endedISO: '2026-07-15T01:02:03Z', rating: 'GHOST', timeOnSite: '01:42', assist: false },
+        { endedISO: '2026-07-15T01:02:03.000Z', rating: 'GHOST', timeOnSite: '05:00', assist: false },
+        { endedISO: '2026-07-15T01:02:03.000Z', rating: 'GHOST', timeOnSite: '04:01', assist: false },
+        { endedISO: null, rating: 'GHOST', timeOnSite: '01:42', assist: false },
+        { endedISO: 'not-a-date', rating: 'ROOT', timeOnSite: {}, assist: 'yes' },
+      ],
+    });
+
+    expect(loadProgress(store)).toEqual({
+      bestRating: null,
+      bestTimeSec: null,
+      completions: 0,
+      runs: [{ endedISO: '2026-07-15T01:02:03.000Z', rating: 'GHOST', timeOnSite: '01:42', assist: false }],
+      briefingSeen: false,
+    });
   });
 });
 
@@ -69,6 +240,36 @@ describe('recordCompletion', () => {
     expect(p.completions).toBe(3);
     expect(p.runs).toHaveLength(3);
     expect(p.runs[0].rating).toBe('DETAINED'); // newest first
+  });
+
+  it('preserves the briefing flag when recording a completion', () => {
+    const store = mockStore();
+    markBriefingSeen(store);
+
+    expect(recordCompletion('GHOST', 100, RUN, store).briefingSeen).toBe(true);
+    expect(loadProgress(store).briefingSeen).toBe(true);
+  });
+
+  it('retries a retained acknowledgement in the next successful completion write', () => {
+    const store = mockStore();
+    const write = store.setItem.bind(store);
+    let rejectNextWrite = true;
+    store.setItem = (key, value) => {
+      if (rejectNextWrite) {
+        rejectNextWrite = false;
+        throw new Error('transient');
+      }
+      write(key, value);
+    };
+
+    const marked = markBriefingSeen(store);
+    expect(marked.briefingSeen).toBe(true);
+    expect(loadProgress(store).briefingSeen).toBe(false);
+
+    const completed = recordCompletion('GHOST', 100, RUN, store, marked.briefingSeen);
+
+    expect(completed.briefingSeen).toBe(true);
+    expect(loadProgress(store)).toMatchObject({ briefingSeen: true, completions: 1 });
   });
 
   it('ABANDONED is filed in history but never a best (the Patch Tuesday rule)', () => {

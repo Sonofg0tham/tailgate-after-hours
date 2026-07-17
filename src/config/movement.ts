@@ -37,6 +37,7 @@ export const MOVEMENT = {
    * consistently now (see FacingController).
    */
   camera: {
+    defaultDistance: 8.5,
     followRate: 6,
     deadzoneRadius: 1.1,
     lookAheadDistance: 1.5,

@@ -1,0 +1,447 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Tailgate: After Hours - Current State Review</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%230e1116'/%3E%3Cpath d='M8 7h16v5H14v3h8v5h-8v5H8z' fill='%23ffb000'/%3E%3C/svg%3E">
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #ece8de;
+      --paper: #f8f5ed;
+      --ink: #171b20;
+      --muted: #5a626b;
+      --line: #c8c2b5;
+      --amber: #9b6500;
+      --amber-soft: #f2dfb0;
+      --alarm: #c32620;
+      --good: #2d6a4f;
+      --code: #e5e0d5;
+      --shadow: 0 20px 55px rgba(26, 25, 21, 0.14);
+      --radius-sm: 3px;
+      --radius-md: 7px;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #090c10;
+        --paper: #0e1116;
+        --ink: #c7cdd4;
+        --muted: #89929d;
+        --line: #303740;
+        --amber: #ffb000;
+        --amber-soft: #352a14;
+        --alarm: #ff3b30;
+        --good: #78b99b;
+        --code: #171c23;
+        --shadow: 0 22px 70px rgba(0, 0, 0, 0.42);
+      }
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      padding: 2rem 1rem 5rem;
+      background:
+        linear-gradient(rgba(255, 176, 0, 0.035) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255, 176, 0, 0.025) 1px, transparent 1px),
+        var(--bg);
+      background-size: 32px 32px;
+      color: var(--ink);
+      font: 17px/1.68 "IBM Plex Mono", "Cascadia Mono", Consolas, monospace;
+    }
+    main {
+      width: min(100%, 76rem);
+      margin: 0 auto;
+      background: var(--paper);
+      border: 1px solid var(--line);
+      box-shadow: var(--shadow);
+    }
+    .masthead {
+      position: relative;
+      overflow: hidden;
+      padding: clamp(1.5rem, 4vw, 3.5rem);
+      border-top: 6px solid var(--amber);
+      border-bottom: 1px solid var(--line);
+    }
+    .masthead::after {
+      content: "F12";
+      position: absolute;
+      right: 1.5rem;
+      bottom: -2.7rem;
+      color: var(--amber);
+      opacity: 0.07;
+      font: 600 clamp(7rem, 20vw, 14rem)/1 "Saira Condensed", "Franklin Gothic Condensed", sans-serif;
+    }
+    .clearance {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem 1.25rem;
+      margin-bottom: 2rem;
+      color: var(--amber);
+      font-size: 0.78rem;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+    }
+    h1, h2, h3 {
+      font-family: "Saira Condensed", "Franklin Gothic Condensed", sans-serif;
+      font-weight: 600;
+      letter-spacing: 0.015em;
+    }
+    h1 {
+      max-width: 14ch;
+      margin: 0 0 1rem;
+      font-size: clamp(2.8rem, 8vw, 5.8rem);
+      line-height: 0.92;
+      text-transform: uppercase;
+    }
+    h2 {
+      margin: 0 0 1rem;
+      font-size: clamp(1.8rem, 4vw, 2.5rem);
+      line-height: 1.05;
+      text-transform: uppercase;
+    }
+    h3 {
+      margin: 1.75rem 0 0.45rem;
+      font-size: 1.35rem;
+      line-height: 1.2;
+    }
+    p, li { max-width: 70ch; }
+    p { margin: 0 0 1rem; }
+    ul, ol { margin: 0.75rem 0 1rem; padding-left: 1.4rem; }
+    li { margin-bottom: 0.65rem; }
+    .lead {
+      position: relative;
+      z-index: 1;
+      max-width: 58ch;
+      color: var(--muted);
+      font-size: 1.05rem;
+    }
+    .content { padding: clamp(1.5rem, 4vw, 3.5rem); }
+    section {
+      padding: 2.5rem 0;
+      border-top: 1px solid var(--line);
+    }
+    section:first-child { padding-top: 0; border-top: 0; }
+    .verdict {
+      max-width: 70ch;
+      margin: 1.5rem 0;
+      padding: 1.1rem 1.25rem;
+      border-left: 5px solid var(--amber);
+      background: var(--amber-soft);
+      border-radius: 0 var(--radius-md) var(--radius-md) 0;
+    }
+    .verdict strong { color: var(--amber); }
+    .metrics {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+      gap: 1px;
+      margin: 1.5rem 0;
+      border: 1px solid var(--line);
+      background: var(--line);
+    }
+    .metric { padding: 1rem; background: var(--paper); }
+    .metric b {
+      display: block;
+      color: var(--amber);
+      font: 600 2rem/1 "Saira Condensed", sans-serif;
+    }
+    .metric span { color: var(--muted); font-size: 0.82rem; }
+    .timeline {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 0;
+      margin: 2rem 0;
+      border-top: 2px solid var(--amber);
+    }
+    .time {
+      position: relative;
+      padding: 0.9rem 0.45rem 0;
+      color: var(--muted);
+      font-size: 0.78rem;
+    }
+    .time::before {
+      content: "";
+      position: absolute;
+      top: -6px;
+      left: 0;
+      width: 10px;
+      height: 10px;
+      background: var(--paper);
+      border: 2px solid var(--amber);
+      border-radius: 50%;
+    }
+    .time b { display: block; color: var(--ink); font-size: 0.88rem; }
+    .table-wrap { overflow-x: auto; margin: 1.25rem 0; }
+    table { width: 100%; border-collapse: collapse; min-width: 46rem; }
+    th, td {
+      padding: 0.75rem;
+      text-align: left;
+      vertical-align: top;
+      border-bottom: 1px solid var(--line);
+    }
+    th {
+      color: var(--muted);
+      font-size: 0.76rem;
+      letter-spacing: 0.09em;
+      text-transform: uppercase;
+    }
+    td { font-size: 0.9rem; }
+    code {
+      padding: 0.12em 0.35em;
+      border: 1px solid var(--line);
+      border-radius: var(--radius-sm);
+      background: var(--code);
+      color: var(--ink);
+      font-family: inherit;
+      font-size: 0.9em;
+    }
+    .severity, .status {
+      display: inline-block;
+      padding: 0.18rem 0.45rem;
+      border: 1px solid currentColor;
+      border-radius: var(--radius-sm);
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+    .medium { color: var(--amber); }
+    .fixed, .pass { color: var(--good); }
+    .open { color: var(--alarm); }
+    .finding {
+      max-width: 70ch;
+      margin: 1.5rem 0;
+      padding: 1.25rem;
+      border: 1px solid var(--line);
+      border-left: 5px solid var(--amber);
+      border-radius: 0 var(--radius-md) var(--radius-md) 0;
+    }
+    .finding h3 { margin-top: 0; }
+    .finding p:last-child { margin-bottom: 0; }
+    .two-column {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 1.25rem;
+    }
+    .panel {
+      padding: 1.15rem;
+      border: 1px solid var(--line);
+      border-radius: var(--radius-md);
+    }
+    .panel h3 { margin-top: 0; }
+    .ranked {
+      counter-reset: priority;
+      list-style: none;
+      padding-left: 0;
+    }
+    .ranked li {
+      counter-increment: priority;
+      position: relative;
+      padding: 0 0 1rem 3rem;
+      border-bottom: 1px solid var(--line);
+      margin-bottom: 1rem;
+    }
+    .ranked li::before {
+      content: counter(priority, decimal-leading-zero);
+      position: absolute;
+      left: 0;
+      top: 0;
+      color: var(--amber);
+      font-weight: 700;
+    }
+    .method { color: var(--muted); font-size: 0.9rem; }
+    a { color: var(--amber); text-underline-offset: 0.18em; }
+    footer {
+      padding: 1.5rem clamp(1.5rem, 4vw, 3.5rem);
+      border-top: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 0.78rem;
+    }
+    @media (max-width: 720px) {
+      body { padding: 0; }
+      main { border-left: 0; border-right: 0; }
+      .two-column { grid-template-columns: 1fr; }
+      .timeline { grid-template-columns: 1fr; border-top: 0; border-left: 2px solid var(--amber); }
+      .time { padding: 0 0 1rem 1rem; }
+      .time::before { top: 0.35rem; left: -6px; }
+    }
+    @media print {
+      body { padding: 0; background: #fff; }
+      main { box-shadow: none; border: 0; }
+      section { break-inside: avoid; }
+    }
+  </style>
+</head>
+<body>
+<main>
+  <header class="masthead">
+    <div class="clearance">
+      <span>Meridian Mutual</span>
+      <span>Floor 12</span>
+      <span>Review date 15 July 2026</span>
+      <span>Phase 1 hardening</span>
+    </div>
+    <h1>Current state review</h1>
+    <p class="lead">A code, security, visual and playability review of Tailgate: After Hours, followed by the fixes completed in the first v1.1 phase.</p>
+  </header>
+
+  <div class="content">
+    <section>
+      <h2>Verdict</h2>
+      <div class="verdict">
+        <strong>Technically sound, mechanically promising, visually one pass short of release quality.</strong>
+        The deterministic simulation and report system are convincing. The in-world presentation still looks like a greybox, and the production HUD explains the engine more clearly than it guides the player.
+      </div>
+      <p>The best screen is the Engagement Report. It feels specific to Tailgate and gives the run a satisfying security-consultancy payoff. The weakest surface is the moment-to-moment 3D view, where rooms, staff and objectives are harder to read than the underlying systems deserve.</p>
+
+      <div class="metrics" aria-label="Verification summary">
+        <div class="metric"><b>243</b><span>automated tests passing</span></div>
+        <div class="metric"><b>0</b><span>known dependency advisories</span></div>
+        <div class="metric"><b>33</b><span>test files passing</span></div>
+        <div class="metric"><b>187.37 kB</b><span>production JavaScript, gzip</span></div>
+      </div>
+
+      <div class="timeline" aria-label="Night engagement timeline">
+        <div class="time"><b>01:00</b>Sign in</div>
+        <div class="time"><b>02:00</b>Ingress</div>
+        <div class="time"><b>03:00</b>Plant</div>
+        <div class="time"><b>04:00</b>Exfil</div>
+        <div class="time"><b>05:00</b>Dawn</div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Security review</h2>
+      <p>No Critical or High application flaw was found. This is a static, single-player game with no backend, account system, analytics or user-generated content, which keeps the exposed attack surface small.</p>
+
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>#</th><th>Severity</th><th>Category</th><th>File and line</th><th>Description</th><th>Status</th></tr></thead>
+          <tbody>
+            <tr><td>1</td><td><span class="severity medium">Medium</span></td><td>Browser hardening</td><td><code>vercel.ts:20</code></td><td>The deployment lacked CSP, framing, MIME, referrer and device-permission controls.</td><td><span class="status fixed">Fixed</span></td></tr>
+            <tr><td>2</td><td><span class="severity medium">Medium</span></td><td>CI supply chain</td><td><code>.github/workflows/ci.yml:16</code></td><td>The workflow had default token permissions, mutable action tags and an unchecked binary download.</td><td><span class="status fixed">Fixed</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <article class="finding">
+        <h3>Medium - Browser hardening - <code>vercel.ts:20</code></h3>
+        <p><strong>What was wrong:</strong> the live deployment supplied HSTS but no project-level Content Security Policy, anti-framing rule, MIME sniffing protection, referrer policy or device-permission restrictions.</p>
+        <p><strong>Why it matters:</strong> the game has little hostile data today, but missing headers leave the browser with permissive defaults. A later content feature or compromised asset would have fewer limits around it.</p>
+        <p><strong>Fix:</strong> Phase 1 adds a same-origin CSP with only the local <code>data:</code> and <code>blob:</code> allowances required by bundled fonts and GLTF textures, <code>frame-ancestors 'none'</code>, <code>X-Frame-Options: DENY</code>, <code>nosniff</code>, <code>no-referrer</code>, and disables camera, microphone and geolocation. The protected preview was checked with authenticated Vercel tooling and a clean browser console.</p>
+      </article>
+
+      <article class="finding">
+        <h3>Medium - CI supply chain - <code>.github/workflows/ci.yml:16,35,65,80</code></h3>
+        <p><strong>What was wrong:</strong> GitHub Actions used mutable major-version tags, the workflow token had no explicit permission boundary, and gitleaks was downloaded without a checksum.</p>
+        <p><strong>Why it matters:</strong> a compromised action tag or release download could execute inside CI. That creates a path to repository data and any secrets later added to the workflow.</p>
+        <p><strong>Fix:</strong> Phase 1 sets <code>contents: read</code>, pins every JavaScript action to a full commit SHA on the Node 24 runtime, and runs the official Gitleaks container by immutable image digest. The scanner no longer depends on an unchecked runtime download.</p>
+      </article>
+
+      <h3>Positive security observations</h3>
+      <ul>
+        <li>DOM output uses <code>textContent</code>. No <code>innerHTML</code> or dynamic code execution was found.</li>
+        <li>The repository secret pass was clean. Environment files are ignored and no environment file appears in Git history.</li>
+        <li>The lockfile is committed. <code>npm audit</code> reports zero vulnerabilities after Phase 1.</li>
+        <li>Vite 7.3.6 and Vitest 4.1.10 sit above the affected ranges in the checked advisories.</li>
+      </ul>
+
+      <div class="verdict">
+        <strong>Dependency note:</strong> the latest <code>@vercel/config</code> release introduced three High advisories through its pinned routing package during implementation. It was rejected. Version 0.0.32 supplies the required typed API without those dependencies, and the final audit is clean.
+      </div>
+    </section>
+
+    <section>
+      <h2>Code review</h2>
+      <p>The fixed-step simulation remains the strongest engineering decision in the project. Phase 1 leaves it unchanged and repairs the mutable browser-side systems around it.</p>
+
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Priority</th><th>Area</th><th>Evidence</th><th>Outcome</th></tr></thead>
+          <tbody>
+            <tr><td>High</td><td>Engagement reset</td><td><code>src/sim/InputLog.ts:60</code></td><td>A new session object resets ticks, recordings, replays and forced controls.</td></tr>
+            <tr><td>High</td><td>GPU resource ownership</td><td><code>src/world/Extruder.ts:233</code></td><td>Replacement levels dispose each unique geometry and material once.</td></tr>
+            <tr><td>Medium</td><td>Per-frame allocation</td><td><code>src/entities/TorchBeam.ts:30</code></td><td>Threat meshes reuse fixed buffers. Hidden debug cones skip updates.</td></tr>
+            <tr><td>Medium</td><td>Character loading</td><td><code>src/character/CharacterLoader.ts:59</code></td><td>Each GLB parses once. Skeleton-aware clones remain independent.</td></tr>
+            <tr><td>Medium</td><td>Stored progress</td><td><code>src/systems/Progress.ts:74</code></td><td>Malformed history rows and invalid summary values are discarded safely.</td></tr>
+            <tr><td>Low</td><td>High-DPI rendering</td><td><code>src/config/renderLighting.ts:103</code></td><td>Pixel ratio is capped at 2 and refreshed on resize.</td></tr>
+            <tr><td>Low</td><td>Main module coupling</td><td><code>src/systems/EngagementLifecycle.ts:22</code></td><td>HUD formatting and engagement lifecycle now have focused modules and tests.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>Phase 1 regression coverage</h3>
+      <ul>
+        <li>Two consecutive engagements produce independent tick-zero input logs.</li>
+        <li>Corrupt localStorage cannot break the kiosk.</li>
+        <li>Concurrent character requests share one GLB parse, retry failed loads, and return independent skinned rigs.</li>
+        <li>Level disposal is unique, idempotent and never owns materials shared with a replacement.</li>
+        <li>Beam attributes survive repeated updates without normal generation.</li>
+        <li>The extracted HUD preserves Phase 6 output exactly.</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>Visual review</h2>
+      <div class="two-column">
+        <article class="panel">
+          <h3>Already working</h3>
+          <ul>
+            <li>The kiosk and Engagement Report carry the access-control fiction clearly.</li>
+            <li>Amber and alarm red have disciplined roles.</li>
+            <li>Guard beams make the detection model visible in real space.</li>
+            <li>High contrast and reduced motion are present from the first release.</li>
+          </ul>
+        </article>
+        <article class="panel">
+          <h3>Holding it back</h3>
+          <ul>
+            <li>Floors, walls and furniture still read as greybox geometry.</li>
+            <li>The operator and cleaners share the same body and silhouette.</li>
+            <li>Objective cylinders look like development markers.</li>
+            <li>Rooms lack enough props, signage and material contrast to read at a glance.</li>
+          </ul>
+        </article>
+      </div>
+      <p class="method">Phase 1 deliberately leaves these surfaces unchanged. They belong to the planned visual pass, where they can be judged together rather than arriving as scattered styling edits.</p>
+    </section>
+
+    <section>
+      <h2>Playability review</h2>
+      <ol class="ranked">
+        <li><strong>The HUD needs to serve the player.</strong> The production view currently lists FPS, simulation time, device, every door and internal state. Phase 2 should keep those values in development builds and replace them with a compact field readout.</li>
+        <li><strong>Interaction needs an affordance before input.</strong> The server rack and photo targets do not show the required E or A hold until progress has already started.</li>
+        <li><strong>Doors need names and readable states.</strong> The data model is clear, but the in-world panels do not yet explain access or timing well enough.</li>
+        <li><strong>The post-plant checkpoint can become a loop.</strong> A guard near the rack can detain the player repeatedly after restart. The safe checkpoint and guard reset belong in Phase 2.</li>
+        <li><strong>Run length needs real controller evidence.</strong> Automated routes prove completion and determinism, but they cannot settle feel. Craig should judge the 5 to 8 minute target with the pad before patrol or movement values change.</li>
+      </ol>
+    </section>
+
+    <section>
+      <h2>Verification record</h2>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Check</th><th>Result</th><th>Notes</th></tr></thead>
+          <tbody>
+            <tr><td>TypeScript strict check</td><td><span class="status pass">Pass</span></td><td>No type errors.</td></tr>
+            <tr><td>ESLint</td><td><span class="status pass">Pass</span></td><td>No lint errors.</td></tr>
+            <tr><td>Vitest</td><td><span class="status pass">Pass</span></td><td>33 files, 243 tests.</td></tr>
+            <tr><td>Production build</td><td><span class="status pass">Pass</span></td><td>Vite 7.3.6, 187.37 kB gzip JavaScript.</td></tr>
+            <tr><td>Dependency audit</td><td><span class="status pass">Pass</span></td><td>0 known vulnerabilities.</td></tr>
+            <tr><td>Vercel config compile</td><td><span class="status pass">Pass</span></td><td>One route, five required security headers.</td></tr>
+            <tr><td>Render and rebuild stress</td><td><span class="status pass">Pass</span></td><td>36,000 forced frames and 200 level rebuilds. Live GPU counts stabilised with zero growth between matched cycles.</td></tr>
+            <tr><td>Desktop browser review</td><td><span class="status pass">Pass</span></td><td>1440 by 900 and 1024 by 768 inspected.</td></tr>
+            <tr><td>Controller playthrough</td><td><span class="status open">Open</span></td><td>Requires Craig’s physical controller session.</td></tr>
+            <tr><td>Deployed header check</td><td><span class="status open">Open</span></td><td>Requires the Phase 1 Vercel preview and CLI.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="method">Review methods: whole-repository static inspection, targeted secret search, dependency advisory check, production build, automated tests, local browser capture, and direct inspection of the existing production response headers.</p>
+    </section>
+  </div>
+
+  <footer>Tailgate: After Hours // Meridian Mutual night engagement // Phase 1 review record</footer>
+</main>
+</body>
+</html>

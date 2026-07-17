@@ -6,10 +6,12 @@ import {
   createDoorState,
   doorOpenLookup,
   isDoorOpen,
+  selectClosedDoorWaitTarget,
   type DoorRuntimeState,
 } from './DoorState';
 import { createStaffState } from '../entities/StaffState';
 import { parseLevel, type LevelData } from '../world/level';
+import type { MovementIntent } from '../input/InputState';
 
 const LEVEL_DATA: LevelData = {
   cellSize: 1,
@@ -20,14 +22,22 @@ const LEVEL_DATA: LevelData = {
     '.': { kind: 'floor', zone: 'room' },
     '+': { kind: 'door', zone: 'room', open: true },
   },
-  zones: { room: { label: 'Room', surface: 'concrete', tint: '#000' } },
+  zones: { room: { label: 'Room', surface: 'concrete', tint: '#000', visualProfile: 'service' } },
   layout: ['#####', '#.+.#', '#####'],
   furniture: [],
   lights: [],
-  doors: [{ x: 2, y: 1, id: 'test-badge', kind: 'badge' }],
+  doors: [{ x: 2, y: 1, id: 'test-badge', kind: 'badge', displayName: 'TEST ACCESS' }],
   playerStart: { x: 1, y: 1 },
 };
 const LEVEL = parseLevel(LEVEL_DATA);
+const MOVING: MovementIntent = {
+  directionX: 1,
+  directionZ: 0,
+  speed: 'walk',
+  crouched: false,
+  device: 'keyboard',
+};
+const IDLE: MovementIntent = { ...MOVING, directionX: 0, speed: 'idle' };
 
 describe('createDoorState', () => {
   it('starts closed (badge doors never badged yet)', () => {
@@ -118,6 +128,25 @@ describe('doorOpenLookup / closedDoorWallBounds', () => {
     state = badgeDoor(state, 0, false);
     const bounds = closedDoorWallBounds(LEVEL, [state], 500, false);
     expect(bounds).toEqual([]);
+  });
+});
+
+describe('selectClosedDoorWaitTarget', () => {
+  it('selects a closed dynamic door when movement is attempted within one cell size', () => {
+    const target = selectClosedDoorWaitTarget(
+      LEVEL,
+      new Map([['2,1', false]]),
+      { x: 1.5, z: 1.5 },
+      MOVING,
+    );
+
+    expect(target).toEqual({ doorId: 'test-badge', displayName: 'TEST ACCESS' });
+  });
+
+  it('does not select idle time, open crossings or movement outside the measurement radius', () => {
+    expect(selectClosedDoorWaitTarget(LEVEL, new Map([['2,1', false]]), { x: 1.5, z: 1.5 }, IDLE)).toBeNull();
+    expect(selectClosedDoorWaitTarget(LEVEL, new Map([['2,1', true]]), { x: 1.5, z: 1.5 }, MOVING)).toBeNull();
+    expect(selectClosedDoorWaitTarget(LEVEL, new Map([['2,1', false]]), { x: 0.5, z: 1.5 }, MOVING)).toBeNull();
   });
 });
 

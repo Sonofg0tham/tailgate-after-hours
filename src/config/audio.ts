@@ -61,6 +61,13 @@ export const AUDIO = {
   /** Night ambience: one global HVAC bed plus placed spatial emitters. Positions are world metres on Floor 12. */
   ambience: {
     hvacBedGain: 0.35,
+    /** Quiet two-note pressure bed, lifted slowly as the building alert rises. */
+    tension: {
+      frequenciesHz: [55, 58.27] as readonly [number, number],
+      voiceGains: [0.7, 0.16] as readonly [number, number],
+      gainByAlertLevel: [0.015, 0.06, 0.11] as readonly [number, number, number],
+      smoothingSeconds: 1.4,
+    },
     /** Per-zone multiplier on the HVAC bed — rooms breathe differently. */
     zoneBedGain: {
       'server-room': 0.5,

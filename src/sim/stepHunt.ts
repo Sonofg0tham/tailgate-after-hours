@@ -6,7 +6,14 @@ import { stepGuard, type GuardEvent, type StepGuardContext } from '../entities/G
 import { stepStaff } from '../systems/StaffMovement';
 import { stepBolt } from '../systems/BoltFlight';
 import { createBolt, type BoltState } from '../entities/BoltState';
-import { applyStaffBadges, closedDoorWallBounds, doorOpenLookup, type DoorRuntimeState } from '../systems/DoorState';
+import {
+  applyStaffBadges,
+  closedDoorWallBounds,
+  doorOpenLookup,
+  selectClosedDoorWaitTarget,
+  type ClosedDoorWaitTarget,
+  type DoorRuntimeState,
+} from '../systems/DoorState';
 import { stepMission, restartAtCheckpoint } from './stepMission';
 import type { GuardRoute, GuardState, PatrolWaypoint } from '../entities/GuardState';
 import type { StaffRoute, StaffState } from '../entities/StaffState';
@@ -49,6 +56,20 @@ export interface HuntEnvironment {
   guardSpeedScale?: number;
 }
 
+export interface HuntObservation {
+  /** True when one or more guards had direct line of sight this tick. */
+  anyGuardCanSeePlayer: boolean;
+  /** Closed dynamic door selected by the measurement-only wait selector. */
+  closedDoorWaitTarget: ClosedDoorWaitTarget | null;
+}
+
+export interface StepHuntResult {
+  state: HuntState;
+  events: GuardEvent[];
+  /** Read-only presentation data kept outside HuntState and replay state. */
+  observation: HuntObservation;
+}
+
 /** alertLevel at which badge/smokers doors stop honouring badges/schedule and lock shut — ported from Tailgate's Door.ts lockdown check. */
 const LOCKDOWN_ALERT_LEVEL = 2;
 
@@ -68,12 +89,13 @@ export function stepHunt(
   env: HuntEnvironment,
   dtSeconds: number,
   dtMs: number,
-): { state: HuntState; events: GuardEvent[] } {
+): StepHuntResult {
   const lockdown = state.alertLevel.level >= LOCKDOWN_ALERT_LEVEL;
   const doorOverrides = doorOpenLookup(env.level, state.doors, state.simTimeMs, lockdown);
   const wallBounds = [...env.wallBounds, ...closedDoorWallBounds(env.level, state.doors, state.simTimeMs, lockdown)];
 
   const player = stepPlayer(state.player, intent, dtSeconds, wallBounds);
+  const closedDoorWaitTarget = selectClosedDoorWaitTarget(env.level, doorOverrides, player, intent);
 
   const staff = state.staff.map((s, i) => stepStaff(s, { wallBounds, route: env.staffRoutes[i].route, dtSeconds }));
 
@@ -87,6 +109,7 @@ export function stepHunt(
   const footstepRadius = noiseRadius(intent.speed, surfaceAt(env.level, player.x, player.z));
 
   const allEvents: GuardEvent[] = [];
+  let anyGuardCanSeePlayer = false;
   const guards = state.guards.map((guard, i) => {
     const ctx: StepGuardContext = {
       level: env.level,
@@ -103,9 +126,11 @@ export function stepHunt(
       investigateOverride: computeInvestigateOverride(guard, player, footstepRadius, newlyLanded),
     };
     const result = stepGuard(guard, ctx);
+    anyGuardCanSeePlayer ||= result.observation.canSeePlayer;
     allEvents.push(...result.events);
     return result.guard;
   });
+  const observation: HuntObservation = { anyGuardCanSeePlayer, closedDoorWaitTarget };
 
   const alertLevel = stepAlertLevel(state.alertLevel, allEvents, dtMs);
   const simTimeMs = state.simTimeMs + dtMs;
@@ -138,10 +163,11 @@ export function stepHunt(
         staffRoutes: env.staffRoutes,
       }),
       events: allEvents,
+      observation,
     };
   }
 
-  return { state: stepped, events: allEvents };
+  return { state: stepped, events: allEvents, observation };
 }
 
 /**

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { blocksSight, findUnreachableZones, isSolid, isWall, parseLevel, type LevelData } from './level';
 import floor12 from '../data/floor12.json';
 
-const MINIMAL: LevelData = {
+const MINIMAL = {
   cellSize: 1,
   width: 5,
   height: 3,
@@ -14,14 +14,14 @@ const MINIMAL: LevelData = {
     '=': { kind: 'door', zone: 'room', open: false },
   },
   zones: {
-    room: { label: 'Room', surface: 'concrete', tint: '#000000' },
+    room: { label: 'Room', surface: 'concrete', tint: '#000000', visualProfile: 'service' },
   },
   layout: ['#####', '#d+=#', '#####'],
   furniture: [{ x: 1, y: 1, type: 'desk' }],
   lights: [],
-  doors: [{ x: 2, y: 1, id: 'test-door', kind: 'badge' }],
+  doors: [{ x: 2, y: 1, id: 'test-door', kind: 'badge', displayName: 'TEST ACCESS' }],
   playerStart: { x: 2, y: 1 },
-};
+} as LevelData;
 
 describe('parseLevel', () => {
   it('parses a valid minimal level', () => {
@@ -62,13 +62,45 @@ describe('parseLevel', () => {
 
   it('throws when a door entry does not sit on a door cell', () => {
     expect(() =>
-      parseLevel({ ...MINIMAL, doors: [{ x: 0, y: 0, id: 'bad', kind: 'badge' }] }),
+      parseLevel({
+        ...MINIMAL,
+        doors: [{ x: 0, y: 0, id: 'bad', kind: 'badge', displayName: 'BAD ACCESS' }],
+      } as LevelData),
     ).toThrow(/doesn't sit on a door cell/);
   });
 
   it('parses a valid door entry onto the matching layout cell', () => {
     const level = parseLevel(MINIMAL);
-    expect(level.doors).toEqual([{ x: 2, y: 1, id: 'test-door', kind: 'badge' }]);
+    expect(level.doors).toEqual([
+      { x: 2, y: 1, id: 'test-door', kind: 'badge', displayName: 'TEST ACCESS' },
+    ]);
+  });
+
+  it.each([
+    ['missing', undefined],
+    ['blank', '   '],
+  ])('rejects a dynamic door with a %s display name', (_case, displayName) => {
+    const invalid = {
+      ...MINIMAL,
+      doors: [{ ...MINIMAL.doors[0], displayName }],
+    } as unknown as LevelData;
+
+    expect(() => parseLevel(invalid)).toThrow(/display name/i);
+  });
+
+  it.each([
+    ['missing', undefined],
+    ['blank', ''],
+    ['unknown', 'warehouse'],
+  ])('rejects a zone with a %s visual profile', (_case, visualProfile) => {
+    const invalid = {
+      ...MINIMAL,
+      zones: {
+        room: { ...MINIMAL.zones.room, visualProfile },
+      },
+    } as unknown as LevelData;
+
+    expect(() => parseLevel(invalid)).toThrow(/visual profile/i);
   });
 });
 
@@ -109,6 +141,22 @@ describe('blocksSight', () => {
 
 describe('Floor 12 data', () => {
   const level = parseLevel(floor12 as LevelData);
+
+  it('assigns the intended render-only profile to every authored zone', () => {
+    expect(
+      Object.fromEntries(Object.entries(level.zones).map(([id, zone]) => [id, zone.visualProfile])),
+    ).toEqual({
+      corridor: 'service',
+      reception: 'lobby',
+      office: 'office',
+      kitchen: 'service',
+      'print-room': 'service',
+      'server-room': 'server',
+      'corner-office': 'office',
+      maintenance: 'service',
+      ledge: 'edge',
+    });
+  });
 
   it('every zone is reachable from playerStart', () => {
     expect(findUnreachableZones(level)).toEqual([]);
