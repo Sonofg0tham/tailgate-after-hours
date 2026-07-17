@@ -2,12 +2,12 @@ name: CI
 
 # Run on every pull request that targets main, and again on main itself after
 # a merge, so a broken change can never sit unnoticed on the default branch.
-# Also runs on PRs targeting phase-* branches, so a stacked phase PR (one
-# opened against the previous phase's branch while that phase awaits review)
-# gets the same gate instead of arriving at main untested.
+# Also runs on PRs targeting phase-* branches, including the repository's
+# codex/ prefix, so a stacked phase PR gets the same gate instead of arriving
+# at main untested.
 on:
   pull_request:
-    branches: [main, 'phase-*']
+    branches: [main, 'phase-*', 'codex/phase-*']
   push:
     branches: [main]
 
@@ -28,6 +28,7 @@ jobs:
   checks:
     name: checks
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       # Pull the repository onto the runner. fetch-depth 0 gets the full git
       # history so the secret scan can inspect every commit, not just the tip.
