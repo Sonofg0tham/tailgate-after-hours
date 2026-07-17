@@ -20,6 +20,17 @@ const PANEL_THICKNESS = 0.12;
 const LABEL_WIDTH = 512;
 const LABEL_HEIGHT = 192;
 
+/**
+ * Compact overhead sign proportions. The label sits wholly in the transom
+ * above the 2.4 m door panel, with enough horizontal separation for the
+ * three doors in the lobby to remain distinct at the default camera.
+ */
+export const DOOR_LABEL_LAYOUT = Object.freeze({
+  widthCells: 1.3,
+  heightCells: 1.3 * (LABEL_HEIGHT / LABEL_WIDTH),
+  centreY: PANEL_HEIGHT + (WALL_HEIGHT - PANEL_HEIGHT) / 2,
+});
+
 export type DoorAccessState = 'OPEN' | 'SECURED' | 'LOCKDOWN';
 export type DoorAccessIcon = 'ring' | 'square' | 'triangle';
 export type DoorAccessTone = 'clearance' | 'neutral' | 'alarm';
@@ -86,8 +97,12 @@ export class DoorPanel {
     this.labelTexture.colorSpace = THREE.SRGBColorSpace;
     this.labelMaterial = new THREE.SpriteMaterial({ map: this.labelTexture, transparent: true, depthTest: true });
     const label = new THREE.Sprite(this.labelMaterial);
-    label.position.set(0, WALL_HEIGHT * 0.92, 0);
-    label.scale.set(cellSize * 2.6, cellSize * 0.975, 1);
+    label.position.set(0, DOOR_LABEL_LAYOUT.centreY, 0);
+    label.scale.set(
+      cellSize * DOOR_LABEL_LAYOUT.widthCells,
+      cellSize * DOOR_LABEL_LAYOUT.heightCells,
+      1,
+    );
 
     this.group.position.set((def.x + 0.5) * cellSize, 0, (def.y + 0.5) * cellSize);
     this.group.add(this.mesh, label);

@@ -10,6 +10,11 @@ interface DoorAccessPresentation {
 }
 
 interface DoorPanelModule {
+  DOOR_LABEL_LAYOUT?: {
+    widthCells: number;
+    heightCells: number;
+    centreY: number;
+  };
   selectDoorAccessPresentation?: (
     kind: DoorKindDef['kind'],
     open: boolean,
@@ -81,6 +86,22 @@ describe('selectDoorAccessPresentation', () => {
 });
 
 describe('DoorPanel', () => {
+  it('keeps each access label within the doorway transom and clear of neighbouring labels', async () => {
+    const module = await loadDoorPanel();
+    expect(module.DOOR_LABEL_LAYOUT).toBeDefined();
+    if (!module.DOOR_LABEL_LAYOUT) return;
+
+    const layout = module.DOOR_LABEL_LAYOUT;
+    const doorSpacingCells = 3;
+    expect(layout.widthCells).toBeLessThanOrEqual(1.3);
+    expect(doorSpacingCells - layout.widthCells).toBeGreaterThanOrEqual(1.7);
+    expect(layout.heightCells).toBeCloseTo(layout.widthCells * (192 / 512));
+
+    const doorTop = 3 * 0.8;
+    expect(layout.centreY - layout.heightCells / 2).toBeGreaterThan(doorTop);
+    expect(layout.centreY + layout.heightCells / 2).toBeLessThan(3);
+  });
+
   it('keeps the physical open cue, redraws the readable label, and disposes every owned resource', async () => {
     const written: string[] = [];
     const context = {
@@ -138,6 +159,9 @@ describe('DoorPanel', () => {
       const sprite = panel.group.children.find((child) => child instanceof THREE.Sprite);
       expect(sprite).toBeInstanceOf(THREE.Sprite);
       if (!(sprite instanceof THREE.Sprite)) return;
+      expect(sprite.scale.x).toBeCloseTo(1.3);
+      expect(sprite.scale.y).toBeCloseTo(1.3 * (192 / 512));
+      expect(sprite.position.y).toBeCloseTo(2.7);
       const spriteMaterial = sprite.material as THREE.SpriteMaterial;
       expect(spriteMaterial.map).not.toBeNull();
       if (!spriteMaterial.map) return;
