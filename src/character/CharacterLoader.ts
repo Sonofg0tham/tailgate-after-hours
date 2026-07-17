@@ -145,12 +145,10 @@ export async function loadGuardCharacter(): Promise<LoadedGuardCharacter> {
 }
 
 /**
- * Loads a cleaner. PLACEHOLDER: reuses the player's own rogue_hooded.glb
- * body rather than a distinct civilian model — no third KayKit Adventurers
- * character has been sourced for this greybox pass, so a cleaner is
- * currently visually identical to the player at a glance (flagged in the
- * Phase 3 PR; a real civilian body is a follow-up asset pull, same pack,
- * same licence, no new gate needed). Idle/walk only — cleaners never run.
+ * Loads the Rogue rig used as the cleaner's body. CleanerAppearance applies
+ * an independent light-grey uniform and a procedural utility silhouette once
+ * each instance reaches the scene, so this loader can remain asset-focused.
+ * Idle and walk only, cleaners never run.
  */
 export async function loadStaffCharacter(): Promise<LoadedStaffCharacter> {
   const [body, general, movementBasic] = await Promise.all([
