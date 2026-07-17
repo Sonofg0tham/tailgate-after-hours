@@ -236,7 +236,7 @@ describe('tailgate witness', () => {
     ...LEVEL_DATA,
     legend: { ...LEVEL_DATA.legend, '+': { kind: 'door', zone: 'room', open: true } },
     layout: LEVEL_DATA.layout.map((row, y) => (y === 9 ? row.slice(0, 10) + '+' + row.slice(11) : row)),
-    doors: [{ x: 10, y: 9, id: 'test-lobby', kind: 'badge' }],
+    doors: [{ x: 10, y: 9, id: 'test-lobby', kind: 'badge', displayName: 'TEST ACCESS' }],
   });
 
   it('a guard who sees the player standing in an OPEN badge door goes curious and emits tailgateWitnessed', () => {

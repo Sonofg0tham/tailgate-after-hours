@@ -10,7 +10,7 @@ export interface DoorRuntimeState {
   tailgateCloseAt: number;
 }
 
-export function createDoorState(def: DoorKindDef): DoorRuntimeState {
+export function createDoorState<T extends Pick<DoorKindDef, 'id' | 'kind'>>(def: T): DoorRuntimeState {
   return { id: def.id, kind: def.kind, tailgateCloseAt: 0 };
 }
 

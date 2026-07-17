@@ -247,20 +247,78 @@
         font: 400 11px/1.35 'IBM Plex Mono', monospace;
         pointer-events: none;
       }
+      #guard-indicators {
+        position: fixed;
+        inset: 0;
+        z-index: 12;
+        pointer-events: none;
+      }
+      .guard-indicator {
+        position: absolute;
+        left: var(--guard-x, 50%);
+        top: var(--guard-y, 50%);
+        display: flex;
+        align-items: center;
+        gap: calc(8px * var(--hud-scale));
+        box-sizing: border-box;
+        padding: calc(6px * var(--hud-scale)) calc(9px * var(--hud-scale));
+        transform: translate(-50%, -50%);
+        background: var(--hud-panel-bg-strong);
+        border: 1px solid var(--hud-line);
+        color: var(--text, #c7cdd4);
+        font: 600 calc(11px * var(--hud-scale))/1 'IBM Plex Mono', monospace;
+        letter-spacing: 0.08em;
+        text-shadow: 0 1px 2px var(--hud-shadow);
+        white-space: nowrap;
+        transition: left 140ms ease-out, top 140ms ease-out;
+      }
+      .guard-indicator[hidden] {
+        display: none;
+      }
+      .guard-indicator-chevron {
+        display: block;
+        flex: 0 0 auto;
+        box-sizing: border-box;
+        width: calc(12px * var(--hud-scale));
+        height: calc(12px * var(--hud-scale));
+        transform: rotate(calc(var(--guard-angle, 0deg) + 45deg));
+        border-top: calc(3px * var(--hud-scale)) solid var(--amber, #ffb000);
+        border-right: calc(3px * var(--hud-scale)) solid var(--amber, #ffb000);
+      }
+      .guard-indicator[data-tone='alert'] {
+        border-color: var(--alarm, #ff3b30);
+        color: var(--alarm, #ff3b30);
+      }
+      .guard-indicator[data-tone='alert'] .guard-indicator-chevron {
+        border-color: var(--alarm, #ff3b30);
+      }
       #detained-flash {
         position: fixed;
         inset: 0;
+        z-index: 20;
         background: var(--alarm, #ff3b30);
         opacity: 0;
         pointer-events: none;
         display: flex;
+        flex-direction: column;
         align-items: center;
         justify-content: center;
-        font-family: 'IBM Plex Mono', monospace;
-        font-size: 32px;
-        letter-spacing: 0.2em;
+        gap: 14px;
         color: white;
         transition: opacity 0.15s linear;
+      }
+      .detained-heading {
+        font: 600 calc(44px * var(--hud-scale))/1 'Saira Condensed', sans-serif;
+        letter-spacing: 0.2em;
+      }
+      #detained-cause {
+        max-width: min(34rem, calc(100vw - 48px));
+        padding: 9px 12px;
+        background: rgba(14, 17, 22, 0.86);
+        border: 1px solid white;
+        font: 400 calc(14px * var(--hud-scale))/1.45 'IBM Plex Mono', monospace;
+        letter-spacing: 0.04em;
+        text-align: center;
       }
 
       /* The Engagement Report end-screen: the signature one-page pentest
@@ -670,6 +728,20 @@
         background: #000000;
         border-color: #ffffff;
       }
+      body.high-contrast .guard-indicator {
+        background: #000000;
+        border: 2px solid #ffffff;
+        color: #ffffff;
+        text-shadow: 0 1px 3px #000000;
+      }
+      body.high-contrast .guard-indicator-chevron {
+        border-width: calc(4px * var(--hud-scale));
+      }
+      body.high-contrast #detained-cause {
+        background: #000000;
+        border-width: 2px;
+        color: #ffffff;
+      }
       body.high-contrast .terminal-card,
       body.high-contrast .report-sheet {
         background: #090b0e;
@@ -688,11 +760,15 @@
       body.high-contrast .briefing-status {
         border-color: #ffffff;
       }
-      body.reduced-motion .hud-meter-fill {
+      body.reduced-motion .hud-meter-fill,
+      body.reduced-motion .guard-indicator,
+      body.reduced-motion #detained-flash {
         transition: none;
       }
       @media (prefers-reduced-motion: reduce) {
-        .hud-meter-fill {
+        .hud-meter-fill,
+        .guard-indicator,
+        #detained-flash {
           transition: none;
         }
       }
@@ -790,8 +866,21 @@
         </div>
       </section>
     </aside>
+    <div id="guard-indicators" aria-label="Off-screen guard directions">
+      <div class="guard-indicator" data-guard-indicator hidden aria-hidden="true">
+        <span class="guard-indicator-chevron" data-guard-indicator-chevron aria-hidden="true"></span>
+        <span data-guard-indicator-label></span>
+      </div>
+      <div class="guard-indicator" data-guard-indicator hidden aria-hidden="true">
+        <span class="guard-indicator-chevron" data-guard-indicator-chevron aria-hidden="true"></span>
+        <span data-guard-indicator-label></span>
+      </div>
+    </div>
     <pre id="dev-debug" hidden aria-hidden="true"></pre>
-    <div id="detained-flash">DETAINED</div>
+    <div id="detained-flash" role="status" aria-live="assertive" aria-hidden="true">
+      <strong class="detained-heading">DETAINED</strong>
+      <span id="detained-cause"></span>
+    </div>
     <div id="report"><div id="report-sheet" class="report-sheet"></div></div>
     <div id="kiosk" class="overlay"><div id="kiosk-card" class="terminal-card"></div></div>
     <section

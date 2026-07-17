@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { blocksSight, findUnreachableZones, isSolid, isWall, parseLevel, type LevelData } from './level';
 import floor12 from '../data/floor12.json';
 
-const MINIMAL: LevelData = {
+const MINIMAL = {
   cellSize: 1,
   width: 5,
   height: 3,
@@ -19,9 +19,9 @@ const MINIMAL: LevelData = {
   layout: ['#####', '#d+=#', '#####'],
   furniture: [{ x: 1, y: 1, type: 'desk' }],
   lights: [],
-  doors: [{ x: 2, y: 1, id: 'test-door', kind: 'badge' }],
+  doors: [{ x: 2, y: 1, id: 'test-door', kind: 'badge', displayName: 'TEST ACCESS' }],
   playerStart: { x: 2, y: 1 },
-};
+} as LevelData;
 
 describe('parseLevel', () => {
   it('parses a valid minimal level', () => {
@@ -62,13 +62,30 @@ describe('parseLevel', () => {
 
   it('throws when a door entry does not sit on a door cell', () => {
     expect(() =>
-      parseLevel({ ...MINIMAL, doors: [{ x: 0, y: 0, id: 'bad', kind: 'badge' }] }),
+      parseLevel({
+        ...MINIMAL,
+        doors: [{ x: 0, y: 0, id: 'bad', kind: 'badge', displayName: 'BAD ACCESS' }],
+      } as LevelData),
     ).toThrow(/doesn't sit on a door cell/);
   });
 
   it('parses a valid door entry onto the matching layout cell', () => {
     const level = parseLevel(MINIMAL);
-    expect(level.doors).toEqual([{ x: 2, y: 1, id: 'test-door', kind: 'badge' }]);
+    expect(level.doors).toEqual([
+      { x: 2, y: 1, id: 'test-door', kind: 'badge', displayName: 'TEST ACCESS' },
+    ]);
+  });
+
+  it.each([
+    ['missing', undefined],
+    ['blank', '   '],
+  ])('rejects a dynamic door with a %s display name', (_case, displayName) => {
+    const invalid = {
+      ...MINIMAL,
+      doors: [{ ...MINIMAL.doors[0], displayName }],
+    } as unknown as LevelData;
+
+    expect(() => parseLevel(invalid)).toThrow(/display name/i);
   });
 });
 

@@ -24,7 +24,7 @@ const LEVEL_DATA: LevelData = {
   layout: ['#####', '#.+.#', '#####'],
   furniture: [],
   lights: [],
-  doors: [{ x: 2, y: 1, id: 'test-badge', kind: 'badge' }],
+  doors: [{ x: 2, y: 1, id: 'test-badge', kind: 'badge', displayName: 'TEST ACCESS' }],
   playerStart: { x: 1, y: 1 },
 };
 const LEVEL = parseLevel(LEVEL_DATA);

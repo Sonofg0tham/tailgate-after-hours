@@ -36,6 +36,8 @@ import { abandonMission, createMissionState } from './sim/MissionState';
 import type { MovementIntent } from './input/InputState';
 import { noiseRadius } from './systems/Noise';
 import { NoiseRingRenderer } from './systems/NoiseRingRenderer';
+import { GuardFootstepRingPool } from './systems/GuardFootstepRingPool';
+import { GuardFootstepRingRenderer } from './systems/GuardFootstepRingRenderer';
 import { createDebugToggles, type DebugState } from './systems/DebugToggles';
 import { buildLightGrid, lightLevelAtWorld } from './systems/LightModel';
 import { buildLightGridMesh } from './systems/LightGridRenderer';
@@ -61,6 +63,12 @@ import { BriefingView, filterBriefingInteraction } from './ui/BriefingView';
 import { Kiosk } from './ui/Kiosk';
 import { buildDebugLines, buildPlayerHudPresentation } from './ui/HudPresenter';
 import { DevDebugHud, PlayerHud } from './ui/PlayerHud';
+import {
+  GuardIndicatorPresenter,
+  projectGuardIndicator,
+  type GuardIndicatorPresentation,
+} from './ui/GuardIndicators';
+import { detentionMessageFor } from './ui/DetentionFeedback';
 import { PauseLanyard } from './ui/PauseLanyard';
 import { SettingsPanel } from './ui/SettingsPanel';
 import floor12 from './data/floor12.json';
@@ -99,6 +107,7 @@ async function main(): Promise<void> {
   const interactionValueEl = document.getElementById('hud-interaction-value');
   const devDebugEl = document.getElementById('dev-debug');
   const detainedFlashRaw = document.getElementById('detained-flash');
+  const detainedCauseRaw = document.getElementById('detained-cause');
   if (
     !appEl ||
     !objectiveEl ||
@@ -119,11 +128,13 @@ async function main(): Promise<void> {
     !interactionFillEl ||
     !interactionValueEl ||
     !devDebugEl ||
-    !detainedFlashRaw
+    !detainedFlashRaw ||
+    !detainedCauseRaw
   ) {
     throw new Error('Expected the player HUD, DEV debug and detained-flash regions in index.html');
   }
   const detainedFlashEl: HTMLElement = detainedFlashRaw;
+  const detainedCauseEl: HTMLElement = detainedCauseRaw;
   const playerHud = new PlayerHud({
     objective: objectiveEl,
     clock: clockEl,
@@ -211,6 +222,20 @@ async function main(): Promise<void> {
 
   const guardsData = guardsDataRaw as GuardsData;
   const staffData = staffDataRaw as StaffData;
+  const guardIndicatorElements = Array.from(document.querySelectorAll<HTMLElement>('[data-guard-indicator]')).map(
+    (root) => {
+      const label = root.querySelector<HTMLElement>('[data-guard-indicator-label]');
+      const chevron = root.querySelector<HTMLElement>('[data-guard-indicator-chevron]');
+      if (!label || !chevron) {
+        throw new Error('Expected every guard indicator to contain a label and chevron');
+      }
+      return { root, label, chevron };
+    },
+  );
+  if (guardIndicatorElements.length !== guardsData.guards.length) {
+    throw new Error(`Expected ${guardsData.guards.length} guard indicator slots in index.html`);
+  }
+  const guardIndicatorPresenter = new GuardIndicatorPresenter(guardIndicatorElements);
   const isWalkable = (x: number, y: number): boolean => {
     const cell = level.cells[y]?.[x];
     return cell !== undefined && (cell.kind === 'floor' || cell.kind === 'door');
@@ -263,7 +288,7 @@ async function main(): Promise<void> {
   const doorPanels = level.doors.map((def) => {
     const opensEastWest = isWall(level, def.x, def.y - 1) && isWall(level, def.x, def.y + 1);
     const panel = new DoorPanel(def, opensEastWest, level.cellSize);
-    scene.add(panel.mesh);
+    scene.add(panel.group);
     return { def, panel };
   });
 
@@ -294,6 +319,14 @@ async function main(): Promise<void> {
   scene.add(boltLandingRing.mesh);
   let boltLandingRingRemainingMs = 0;
   const BOLT_LANDING_RING_MS = 1500;
+
+  const guardFootstepRingPool = new GuardFootstepRingPool({
+    capacity: 6,
+    maxDistanceMetres: AUDIO.spatial.maxDistanceMetres,
+    lifetimeMs: 600,
+  });
+  const guardFootstepRingRenderer = new GuardFootstepRingRenderer(guardFootstepRingPool.rings.length);
+  scene.add(guardFootstepRingRenderer.group);
 
   const huntEnv: HuntEnvironment = {
     level,
@@ -326,12 +359,17 @@ async function main(): Promise<void> {
   const lifecycle = new EngagementLifecycle('phase-2-dev', FIXED_STEP_SECONDS, huntState.player);
   const inputSession = lifecycle.inputSession;
   let detainedFlashRemainingMs = 0;
+  let lastDetainCause: Extract<GuardEvent, { type: 'detain' }>['cause'] | null = null;
   let animationPhaseMs = 0;
   let prevDoorId: string | null = null;
   let playerStepTimerMs = 0;
   let guardStepTimersMs = guardsData.guards.map(() => 0);
   let detainImpactRemainingMs = 0;
   let shakeRemainingMs = 0;
+  const guardIndicatorForward = new THREE.Vector3();
+  const guardIndicatorWorld = new THREE.Vector3();
+  const guardIndicatorOffset = new THREE.Vector3();
+  const guardIndicatorModels: Array<GuardIndicatorPresentation | null> = guardsData.guards.map(() => null);
   // Phase 6 app flow: boot lands on the kiosk; the sim only advances while
   // running; the pause lanyard freezes it; the report freezes it via
   // the lifecycle report flag plus the mission-phase early return.
@@ -520,11 +558,14 @@ async function main(): Promise<void> {
     playerStepTimerMs = reset.playerStepTimerMs;
     guardStepTimersMs = reset.guardStepTimersMs;
     detainedFlashRemainingMs = reset.detainedFlashRemainingMs;
+    lastDetainCause = null;
+    detainedCauseEl.textContent = '';
     detainImpactRemainingMs = reset.detainImpactRemainingMs;
     shakeRemainingMs = reset.shakeRemainingMs;
     boltLandingRingRemainingMs = reset.boltLandingRingRemainingMs;
     suppressInteractUntilRelease = suppressInitialInteract;
     boltLandingRing.setVisible(false);
+    guardFootstepRingPool.clear();
     movement.reset();
     audio.unlock();
   }
@@ -738,6 +779,10 @@ async function main(): Promise<void> {
 
     const boltsBefore = huntState.bolts;
     const result = stepHunt(huntState, intent, throwAction, interactHeld, huntEnv, deltaSeconds, dtMs);
+    const detainEvent = result.events.find((event) => event.type === 'detain');
+    if (detainEvent?.type === 'detain') {
+      lastDetainCause = detainEvent.cause;
+    }
     huntState = result.state;
     if (!inputSession.intentFrozen) {
       lastIntent = intent;
@@ -799,6 +844,12 @@ async function main(): Promise<void> {
       if (guardStepTimersMs[i] >= AUDIO.guardFootsteps.intervalMs[pace]) {
         guardStepTimersMs[i] = 0;
         audio.play('guardFootstep', { at: { x: g.x, z: g.z }, gain: AUDIO.guardFootsteps.gain });
+        guardFootstepRingPool.trigger(
+          g.x,
+          g.z,
+          Math.hypot(g.x - huntState.player.x, g.z - huntState.player.z),
+          motionLevel() === 'reduced',
+        );
       }
     }
     if (boltLandingRingRemainingMs > 0) {
@@ -829,7 +880,7 @@ async function main(): Promise<void> {
     telemetry.recordTick(deltaSeconds, playerLight);
     telemetry.recordEvents(result.events);
 
-    if (detainedFlashRemainingMs === 0 && result.events.some((e: GuardEvent) => e.type === 'detain')) {
+    if (detainedFlashRemainingMs === 0 && detainEvent) {
       detainedFlashRemainingMs = DETECTION.timing.detainedFlashMs;
       detainImpactRemainingMs = JUICE.detainImpact.durationMs;
       shakeRemainingMs = JUICE.shake.durationMs;
@@ -919,8 +970,11 @@ async function main(): Promise<void> {
     const lockdown = huntState.alertLevel.level >= 2;
     for (const { def, panel } of doorPanels) {
       const doorState = huntState.doors.find((d) => d.id === def.id);
-      panel.update(doorState !== undefined && isDoorOpen(doorState, huntState.simTimeMs, lockdown));
+      panel.update(doorState !== undefined && isDoorOpen(doorState, huntState.simTimeMs, lockdown), lockdown);
     }
+
+    guardFootstepRingPool.update(frameDelta * 1000);
+    guardFootstepRingRenderer.render(guardFootstepRingPool.rings);
 
     // Objective markers: hide each once its objective is done; the exfil
     // marker only appears once the device is planted.
@@ -977,7 +1031,37 @@ async function main(): Promise<void> {
     }
 
     const maxSuspicion = Math.max(0, ...huntState.guards.map((g) => g.suspicion));
-    detainedFlashEl.style.opacity = detainedFlashRemainingMs > 0 ? '0.85' : '0';
+    const showingDetention = detainedFlashRemainingMs > 0 && lastDetainCause !== null;
+    detainedFlashEl.style.opacity = showingDetention ? '0.9' : '0';
+    detainedFlashEl.setAttribute('aria-hidden', showingDetention ? 'false' : 'true');
+    detainedCauseEl.textContent =
+      detainedFlashRemainingMs > 0 && lastDetainCause !== null ? detentionMessageFor(lastDetainCause) : '';
+
+    followCamera.camera.updateMatrixWorld();
+    followCamera.camera.getWorldDirection(guardIndicatorForward);
+    const viewportWidth = renderer.domElement.clientWidth || window.innerWidth;
+    const viewportHeight = renderer.domElement.clientHeight || window.innerHeight;
+    const safeInsetX = 112 * settings.hudScale;
+    const safeInsetY = 128 * settings.hudScale;
+    for (let i = 0; i < huntState.guards.length; i++) {
+      const guard = huntState.guards[i];
+      guardIndicatorWorld.set(guard.x, 1, guard.z);
+      guardIndicatorOffset.copy(guardIndicatorWorld).sub(followCamera.camera.position);
+      const behindCamera = guardIndicatorOffset.dot(guardIndicatorForward) <= 0;
+      guardIndicatorWorld.project(followCamera.camera);
+      guardIndicatorModels[i] = projectGuardIndicator({
+        id: guard.id,
+        state: guard.state,
+        ndcX: guardIndicatorWorld.x,
+        ndcY: guardIndicatorWorld.y,
+        behindCamera,
+        viewportWidth,
+        viewportHeight,
+        safeInsetX,
+        safeInsetY,
+      });
+    }
+    guardIndicatorPresenter.render(guardIndicatorModels);
 
     playerHud.render(
       buildPlayerHudPresentation({

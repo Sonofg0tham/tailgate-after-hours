@@ -62,6 +62,8 @@ export interface DoorKindDef {
   y: number;
   id: string;
   kind: 'badge' | 'smokers' | 'lift';
+  /** Short access-control name rendered on the in-world door panel. */
+  displayName: string;
 }
 
 /** The raw shape of src/data/floor12.json. */
@@ -145,6 +147,9 @@ export function parseLevel(data: LevelData): ParsedLevel {
   }
 
   for (const d of data.doors) {
+    if (typeof d.displayName !== 'string' || d.displayName.trim().length === 0) {
+      throw new Error(`Door "${d.id}" requires a valid display name`);
+    }
     const cell = cells[d.y]?.[d.x];
     if (!cell || cell.kind !== 'door') {
       throw new Error(`Door entry ${JSON.stringify(d)} doesn't sit on a door cell at (${d.x}, ${d.y})`);
