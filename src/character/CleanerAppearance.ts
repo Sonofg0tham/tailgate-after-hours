@@ -83,10 +83,10 @@ export function applyCleanerAppearance(model: THREE.Object3D): CleanerAppearance
   const bottleGeometry = new THREE.CylinderGeometry(0.055, 0.065, 0.24, 8);
 
   accessories.add(
-    accessoryMesh('cleaner-uniform-apron', uniformGeometry, uniformMaterial, [0, 1.22, 0.19]),
+    accessoryMesh('cleaner-uniform-apron', uniformGeometry, uniformMaterial, [0, 1.22, -0.19]),
     accessoryMesh('cleaner-utility-belt', beltGeometry, beltMaterial, [0, 0.9, 0]),
-    accessoryMesh('cleaner-cleaning-pack', packGeometry, packMaterial, [0, 1.1, -0.2]),
-    accessoryMesh('cleaner-bottle', bottleGeometry, bottleMaterial, [0.28, 0.88, -0.11]),
+    accessoryMesh('cleaner-cleaning-pack', packGeometry, packMaterial, [0, 1.1, 0.2]),
+    accessoryMesh('cleaner-bottle', bottleGeometry, bottleMaterial, [0.28, 0.88, 0.11]),
   );
   model.add(accessories);
 

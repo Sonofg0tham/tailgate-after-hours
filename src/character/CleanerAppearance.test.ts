@@ -56,9 +56,13 @@ describe('cleaner appearance', () => {
     applyCleanerAppearance(cleaner.model);
 
     expect(cleaner.model.getObjectByName('cleaner-appearance')).toBeInstanceOf(THREE.Group);
-    expect(cleaner.model.getObjectByName('cleaner-uniform-apron')).toBeInstanceOf(THREE.Mesh);
+    const apron = cleaner.model.getObjectByName('cleaner-uniform-apron');
+    const pack = cleaner.model.getObjectByName('cleaner-cleaning-pack');
+    expect(apron).toBeInstanceOf(THREE.Mesh);
+    expect(apron!.position.z).toBeLessThan(0);
     expect(cleaner.model.getObjectByName('cleaner-utility-belt')).toBeInstanceOf(THREE.Mesh);
-    expect(cleaner.model.getObjectByName('cleaner-cleaning-pack')).toBeInstanceOf(THREE.Mesh);
+    expect(pack).toBeInstanceOf(THREE.Mesh);
+    expect(pack!.position.z).toBeGreaterThan(0);
     expect(cleaner.model.getObjectByName('cleaner-bottle')).toBeInstanceOf(THREE.Mesh);
 
     for (const material of renderMaterials(cleaner.model)) {
