@@ -58,6 +58,7 @@ import { generateReport } from './report/generateReport';
 import { ReportView } from './report/ReportView';
 import { loadProgress, markBriefingSeen, recordCompletion, resolveBriefingSession } from './systems/Progress';
 import { loadSettings, saveSettings, type GameSettings } from './systems/Settings';
+import { disposeOnFinalPageHide } from './systems/PageLifecycle';
 import { setMotionLevel } from './systems/Motion';
 import { setGridMinOverride } from './config/renderLighting';
 import { EngagementLifecycle } from './systems/EngagementLifecycle';
@@ -88,6 +89,8 @@ function gamepadAIsHeld(): boolean {
 async function main(): Promise<void> {
   applyPaletteToCss();
   initMotion(); // reduced motion is the fresh-visitor default
+  let settings: GameSettings = loadSettings();
+  let settingsOpen = false;
 
   const appEl = document.getElementById('app');
   const objectiveEl = document.getElementById('hud-objective');
@@ -193,10 +196,10 @@ async function main(): Promise<void> {
   scene.add(new THREE.AmbientLight(RENDER_LIGHTING.ambient.color, RENDER_LIGHTING.ambient.intensity));
   const fixtures = buildFixtures(level);
   scene.add(fixtures.group);
-  window.addEventListener('pagehide', () => fixtures.dispose(), { once: true });
+  disposeOnFinalPageHide(window, () => fixtures.dispose());
   const worldDressing = buildWorldDressing(level);
   scene.add(worldDressing.group);
-  window.addEventListener('pagehide', () => worldDressing.dispose(), { once: true });
+  disposeOnFinalPageHide(window, () => worldDressing.dispose());
 
   // The nystagmus visibility floor's character half: the operator always
   // reads, whatever the darkness. Concealment is unchanged — sim never sees this.
@@ -216,7 +219,7 @@ async function main(): Promise<void> {
   const audio = new AudioEngine({
     isOccluded: (sourceX, sourceZ, listenerX, listenerZ) => !hasLineOfSight(level, listenerX, listenerZ, sourceX, sourceZ),
   });
-  window.addEventListener('pagehide', () => audio.dispose(), { once: true });
+  disposeOnFinalPageHide(window, () => audio.dispose());
   window.addEventListener('keydown', () => audio.unlock());
   window.addEventListener('pointerdown', () => audio.unlock());
 
@@ -226,7 +229,16 @@ async function main(): Promise<void> {
     scene.add(noiseRing.mesh);
   }
 
-  const followCamera = new FollowCamera(window.innerWidth / window.innerHeight);
+  const followCamera = new FollowCamera(window.innerWidth / window.innerHeight, (cameraDistance) => {
+    // The overlay owns its live controls while open. Ignore background wheel
+    // zoom there so its snapshot and readout cannot become stale.
+    if (settingsOpen) {
+      followCamera.setDistance(settings.cameraDistance);
+      return;
+    }
+    settings = { ...settings, cameraDistance };
+    saveSettings(settings);
+  });
 
   const guardsData = guardsDataRaw as GuardsData;
   const staffData = staffDataRaw as StaffData;
@@ -298,13 +310,9 @@ async function main(): Promise<void> {
       appearance,
     };
   });
-  window.addEventListener(
-    'pagehide',
-    () => {
-      for (const staff of staffEntities) staff.appearance.dispose();
-    },
-    { once: true },
-  );
+  disposeOnFinalPageHide(window, () => {
+    for (const staff of staffEntities) staff.appearance.dispose();
+  });
 
   const doorPanels = level.doors.map((def) => {
     const opensEastWest = isWall(level, def.x, def.y - 1) && isWall(level, def.x, def.y + 1);
@@ -315,7 +323,7 @@ async function main(): Promise<void> {
 
   const missionVisuals = new MissionVisuals();
   scene.add(missionVisuals.group);
-  window.addEventListener('pagehide', () => missionVisuals.dispose(), { once: true });
+  disposeOnFinalPageHide(window, () => missionVisuals.dispose());
 
   const boltMeshGeometry = new THREE.SphereGeometry(0.08, 8, 8);
   const boltMeshMaterial = new THREE.MeshStandardMaterial({ color: 0xc7cdd4 });
@@ -379,9 +387,7 @@ async function main(): Promise<void> {
   // Phase 6 app flow: boot lands on the kiosk; the sim only advances while
   // running; the pause lanyard freezes it; the report freezes it via
   // the lifecycle report flag plus the mission-phase early return.
-  let settings: GameSettings = loadSettings();
   let shakeIntensityLive = settings.shakeIntensity;
-  let settingsOpen = false;
   let settingsReturnTo: 'kiosk' | 'pause' = 'kiosk';
   let prevStartHeld = false;
   let suppressInteractUntilRelease = false;

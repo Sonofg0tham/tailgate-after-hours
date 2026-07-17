@@ -51,13 +51,14 @@ export class FollowCamera {
   private readonly lookAheadOffset = new THREE.Vector2();
   private initialised = false;
 
-  constructor(aspect: number) {
+  constructor(aspect: number, onDistanceChange?: (distanceMetres: number) => void) {
     this.camera = new THREE.PerspectiveCamera(50, aspect, 0.1, 100);
 
     window.addEventListener(
       'wheel',
       (event) => {
         this.setDistance(this.distanceMetres + event.deltaY * 0.01);
+        onDistanceChange?.(this.distanceMetres);
       },
       { passive: true },
     );

@@ -50,7 +50,8 @@ describe('camera distance', () => {
     });
 
     try {
-      const camera = new FollowCamera(16 / 9);
+      const wheelChanges: number[] = [];
+      const camera = new FollowCamera(16 / 9, (distance) => wheelChanges.push(distance));
       expect(camera.distance).toBe(8.5);
 
       camera.setDistance(10);
@@ -65,6 +66,7 @@ describe('camera distance', () => {
       expect(camera.distance).toBe(MOVEMENT.camera.maxDistance);
       listeners.wheel({ deltaY: -10_000 });
       expect(camera.distance).toBe(MOVEMENT.camera.minDistance);
+      expect(wheelChanges).toEqual([MOVEMENT.camera.maxDistance, MOVEMENT.camera.minDistance]);
     } finally {
       if (originalWindow) {
         Object.defineProperty(globalThis, 'window', originalWindow);
