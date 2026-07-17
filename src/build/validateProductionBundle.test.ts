@@ -20,6 +20,12 @@ describe('assertProductionBundleClean', () => {
         { path: 'dist/assets/index-fixture.js', source: 'Object.assign(window,{__teleportTo(){}});' },
       ]),
     ).toThrow(/index-fixture\.js.*__teleportTo/);
+
+    expect(() =>
+      validator.assertProductionBundleClean?.([
+        { path: 'dist/assets/index-renderer-fixture.js', source: 'window.__rendererInfo=()=>({});' },
+      ]),
+    ).toThrow(/index-renderer-fixture\.js.*__rendererInfo/);
   });
 
   it('accepts emitted JavaScript without forbidden hooks', async () => {

@@ -507,6 +507,23 @@ async function main(): Promise<void> {
     },
     // Phase 5: master volume (the Phase 6 settings knob, reachable early).
     __setVolume: (v: number) => audio.setMasterVolume(v),
+    // Acceptance-only renderer counters. They expose numbers, not renderer
+    // ownership, so browser stress checks can prove replaceable visuals settle
+    // without handing production code a mutable Three.js object.
+    __rendererInfo: () => ({
+      memory: {
+        geometries: renderer.info.memory.geometries,
+        textures: renderer.info.memory.textures,
+        programs: renderer.info.programs?.length ?? 0,
+      },
+      render: {
+        frame: renderer.info.render.frame,
+        calls: renderer.info.render.calls,
+        triangles: renderer.info.render.triangles,
+        lines: renderer.info.render.lines,
+        points: renderer.info.render.points,
+      },
+    }),
     });
   }
 

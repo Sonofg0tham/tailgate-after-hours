@@ -24,6 +24,7 @@ export const FORBIDDEN_PRODUCTION_HOOKS = [
   '__missionState',
   '__driveInteract',
   '__setVolume',
+  '__rendererInfo',
   '__forceFrame',
   '__begin',
   '__pause',
