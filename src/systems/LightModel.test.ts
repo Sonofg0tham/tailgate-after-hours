@@ -37,7 +37,7 @@ describe('buildLightGrid / lightLevelAtWorld', () => {
     width: 4,
     height: 4,
     legend: { '.': { kind: 'floor', zone: 'room' } },
-    zones: { room: { label: 'Room', surface: 'concrete', tint: '#000' } },
+    zones: { room: { label: 'Room', surface: 'concrete', tint: '#000', visualProfile: 'service' } },
     layout: ['....', '....', '....', '....'],
     furniture: [],
     lights: [{ x: 1, y: 1, radius: 3, intensity: 1 }],
@@ -75,7 +75,7 @@ describe('occlusion (Phase 5)', () => {
       '+': { kind: 'door', zone: 'room', open: true },
       d: { kind: 'furniture', zone: 'room', furnitureType: 'desk' },
     },
-    zones: { room: { label: 'Room', surface: 'concrete', tint: '#000' } },
+    zones: { room: { label: 'Room', surface: 'concrete', tint: '#000', visualProfile: 'service' } },
     layout: ['...#.....', '#########', '...=.....', '#########', '...+.....', '#########', '...d.....'],
     furniture: [{ x: 3, y: 6, type: 'desk' }],
     lights: [

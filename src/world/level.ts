@@ -7,6 +7,8 @@
 
 export type CellKind = 'wall' | 'floor' | 'door' | 'furniture';
 export type SurfaceType = 'carpet' | 'tile' | 'concrete';
+export const ZONE_VISUAL_PROFILES = ['lobby', 'office', 'service', 'server', 'edge'] as const;
+export type ZoneVisualProfile = (typeof ZONE_VISUAL_PROFILES)[number];
 
 export interface LegendEntry {
   kind: CellKind;
@@ -36,6 +38,8 @@ export interface ZoneDef {
   surface: SurfaceType;
   /** Debug-only "surface tints" overlay colour. Never the only way a zone reads. */
   tint: string;
+  /** Render-only dressing family. Simulation continues to read the grid cells above. */
+  visualProfile: ZoneVisualProfile;
 }
 
 export interface FurniturePlacement {
@@ -111,6 +115,12 @@ export interface ParsedLevel {
 export function parseLevel(data: LevelData): ParsedLevel {
   if (data.layout.length !== data.height) {
     throw new Error(`Level layout has ${data.layout.length} rows, expected height ${data.height}`);
+  }
+
+  for (const [zoneId, zone] of Object.entries(data.zones)) {
+    if (!ZONE_VISUAL_PROFILES.includes(zone.visualProfile as ZoneVisualProfile)) {
+      throw new Error(`Zone "${zoneId}" requires a valid visual profile`);
+    }
   }
 
   const cells: ParsedCell[][] = data.layout.map((row, y) => {

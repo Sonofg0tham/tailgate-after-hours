@@ -22,7 +22,7 @@ const LEVEL_DATA: LevelData = {
     '.': { kind: 'floor', zone: 'room' },
     '+': { kind: 'door', zone: 'room', open: true },
   },
-  zones: { room: { label: 'Room', surface: 'concrete', tint: '#000' } },
+  zones: { room: { label: 'Room', surface: 'concrete', tint: '#000', visualProfile: 'service' } },
   layout: ['#####', '#.+.#', '#####'],
   furniture: [],
   lights: [],

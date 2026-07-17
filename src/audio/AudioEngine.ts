@@ -1,5 +1,6 @@
 import { AUDIO } from '../config/audio';
 import { drone, noiseBurst, noiseLoop, tone } from './synth';
+import { createTensionLayer, type AudioAlertLevel, type TensionLayer } from './TensionLayer';
 
 /**
  * The shared audio module, following the pattern proven across the first
@@ -178,6 +179,8 @@ export interface AudioFrameState {
   zone: string | null;
   /** Where the searching mutter should sit (the nearest SEARCHING guard), or null for silence. */
   mutterSource: { x: number; z: number } | null;
+  /** Building-wide alert state, used only to shape the non-diegetic tension bed. */
+  alertLevel: AudioAlertLevel;
   /** Dawn has arrived: the birds start, quiet and awful. */
   dawn: boolean;
 }
@@ -198,6 +201,7 @@ export class AudioEngine {
   private readonly samples = new Map<CueName, AudioBuffer>();
 
   private hvacBed: GainNode | null = null;
+  private tension: TensionLayer | null = null;
   private emitters: SpatialVoice[] = [];
   private mutter: SpatialVoice | null = null;
   private nextChirpAtMs: number | null = null;
@@ -244,6 +248,7 @@ export class AudioEngine {
     };
 
     this.buildAmbience();
+    this.tension = createTensionLayer(this.ctx, this.buses.ambience);
     this.buildMutter();
   }
 
@@ -289,6 +294,22 @@ export class AudioEngine {
     return this.userVolume;
   }
 
+  /** Releases continuous voices and the Web Audio graph on page teardown. */
+  dispose(): void {
+    this.tension?.dispose();
+    this.tension = null;
+    if (this.ctx) {
+      void this.ctx.close();
+    }
+    this.ctx = null;
+    this.master = null;
+    this.buses = null;
+    this.hvacBed = null;
+    this.emitters = [];
+    this.mutter = null;
+    this.nextChirpAtMs = null;
+  }
+
   /** Everything drops briefly (the detain dead-line moment), then recovers. */
   duck(amount: number, holdMs: number): void {
     if (!this.master || !this.ctx) {
@@ -325,6 +346,7 @@ export class AudioEngine {
       const zoneGain = AUDIO.ambience.zoneBedGain[frame.zone ?? 'corridor'] ?? 1;
       this.hvacBed.gain.setTargetAtTime(AUDIO.ambience.hvacBedGain * zoneGain, this.ctx.currentTime, 0.4);
     }
+    this.tension?.setAlertLevel(frame.alertLevel);
 
     // Placed emitters: only their occlusion changes.
     for (const voice of this.emitters) {

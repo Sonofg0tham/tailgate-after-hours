@@ -1,4 +1,19 @@
-import { shouldApplySliderValue, type GameSettings, type SliderApplyMode } from '../systems/Settings';
+import {
+  CAMERA_DISTANCE,
+  shouldApplySliderValue,
+  type GameSettings,
+  type SliderApplyMode,
+} from '../systems/Settings';
+
+export const CAMERA_DISTANCE_CONTROL = Object.freeze({
+  label: 'Camera distance',
+  min: CAMERA_DISTANCE.min,
+  max: CAMERA_DISTANCE.max,
+  step: CAMERA_DISTANCE.step,
+  applyMode: 'live' as const,
+});
+
+export type SliderValueFormat = 'percent' | 'metres';
 
 /**
  * The settings overlay, reachable from the kiosk and the pause lanyard.
@@ -39,6 +54,19 @@ export class SettingsPanel {
         current.hudScale = v;
         push();
       }),
+      slider(
+        CAMERA_DISTANCE_CONTROL.label,
+        current.cameraDistance,
+        CAMERA_DISTANCE_CONTROL.min,
+        CAMERA_DISTANCE_CONTROL.max,
+        CAMERA_DISTANCE_CONTROL.step,
+        (v) => {
+          current.cameraDistance = v;
+          push();
+        },
+        CAMERA_DISTANCE_CONTROL.applyMode,
+        'metres',
+      ),
       slider('Screen shake', current.shakeIntensity, 0, 1, 0.05, (v) => {
         current.shakeIntensity = v;
         push();
@@ -89,6 +117,7 @@ function slider(
   step: number,
   set: (v: number) => void,
   applyMode: SliderApplyMode = 'live',
+  format: SliderValueFormat = 'percent',
 ): HTMLElement {
   const row = el('label', 'settings-row');
   const text = el('span', 'settings-label', label);
@@ -98,10 +127,10 @@ function slider(
   input.max = String(max);
   input.step = String(step);
   input.value = String(value);
-  const readout = el('span', 'settings-value', formatValue(value));
+  const readout = el('span', 'settings-value', formatSliderValue(value, format));
   const update = (eventType: 'input' | 'change'): void => {
     const v = Number(input.value);
-    readout.textContent = formatValue(v);
+    readout.textContent = formatSliderValue(v, format);
     if (shouldApplySliderValue(applyMode, eventType)) {
       set(v);
     }
@@ -112,7 +141,10 @@ function slider(
   return row;
 }
 
-function formatValue(v: number): string {
+export function formatSliderValue(v: number, format: SliderValueFormat = 'percent'): string {
+  if (format === 'metres') {
+    return `${Number.isInteger(v) ? v.toFixed(0) : v.toFixed(1)} m`;
+  }
   return `${Math.round(v * 100)}%`;
 }
 

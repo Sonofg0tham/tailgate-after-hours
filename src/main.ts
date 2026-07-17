@@ -12,6 +12,7 @@ import { loadCharacter, loadGuardCharacter, loadStaffCharacter } from './charact
 import { AnimationController } from './character/AnimationController';
 import { GuardAnimationController } from './character/GuardAnimationController';
 import { StaffAnimationController } from './character/StaffAnimationController';
+import { applyCleanerAppearance } from './character/CleanerAppearance';
 import { MovementController } from './input/MovementController';
 import { KeyboardState } from './input/KeyboardInput';
 import { ThrowInput } from './input/ThrowInput';
@@ -21,9 +22,10 @@ import { FpsMeter } from './perf/FpsMeter';
 import { applyPaletteToCss, PALETTE_HEX } from './config/palette';
 import { DETECTION } from './config/detection';
 import { THROW } from './config/throw';
-import { MISSION } from './config/mission';
 import { boundedDevicePixelRatio, gridBrightness, RENDER_LIGHTING } from './config/renderLighting';
 import { buildFixtures } from './world/Fixtures';
+import { MissionVisuals } from './world/MissionVisuals';
+import { buildWorldDressing } from './world/WorldDressing';
 import { AudioEngine } from './audio/AudioEngine';
 import { AUDIO } from './config/audio';
 import { hasLineOfSight } from './systems/Vision';
@@ -56,6 +58,7 @@ import { generateReport } from './report/generateReport';
 import { ReportView } from './report/ReportView';
 import { loadProgress, markBriefingSeen, recordCompletion, resolveBriefingSession } from './systems/Progress';
 import { loadSettings, saveSettings, type GameSettings } from './systems/Settings';
+import { disposeOnFinalPageHide } from './systems/PageLifecycle';
 import { setMotionLevel } from './systems/Motion';
 import { setGridMinOverride } from './config/renderLighting';
 import { EngagementLifecycle } from './systems/EngagementLifecycle';
@@ -86,6 +89,8 @@ function gamepadAIsHeld(): boolean {
 async function main(): Promise<void> {
   applyPaletteToCss();
   initMotion(); // reduced motion is the fresh-visitor default
+  let settings: GameSettings = loadSettings();
+  let settingsOpen = false;
 
   const appEl = document.getElementById('app');
   const objectiveEl = document.getElementById('hud-objective');
@@ -189,7 +194,12 @@ async function main(): Promise<void> {
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   scene.add(new THREE.AmbientLight(RENDER_LIGHTING.ambient.color, RENDER_LIGHTING.ambient.intensity));
-  scene.add(buildFixtures(level));
+  const fixtures = buildFixtures(level);
+  scene.add(fixtures.group);
+  disposeOnFinalPageHide(window, () => fixtures.dispose());
+  const worldDressing = buildWorldDressing(level);
+  scene.add(worldDressing.group);
+  disposeOnFinalPageHide(window, () => worldDressing.dispose());
 
   // The nystagmus visibility floor's character half: the operator always
   // reads, whatever the darkness. Concealment is unchanged — sim never sees this.
@@ -209,6 +219,7 @@ async function main(): Promise<void> {
   const audio = new AudioEngine({
     isOccluded: (sourceX, sourceZ, listenerX, listenerZ) => !hasLineOfSight(level, listenerX, listenerZ, sourceX, sourceZ),
   });
+  disposeOnFinalPageHide(window, () => audio.dispose());
   window.addEventListener('keydown', () => audio.unlock());
   window.addEventListener('pointerdown', () => audio.unlock());
 
@@ -218,7 +229,16 @@ async function main(): Promise<void> {
     scene.add(noiseRing.mesh);
   }
 
-  const followCamera = new FollowCamera(window.innerWidth / window.innerHeight);
+  const followCamera = new FollowCamera(window.innerWidth / window.innerHeight, (cameraDistance) => {
+    // The overlay owns its live controls while open. Ignore background wheel
+    // zoom there so its snapshot and readout cannot become stale.
+    if (settingsOpen) {
+      followCamera.setDistance(settings.cameraDistance);
+      return;
+    }
+    settings = { ...settings, cameraDistance };
+    saveSettings(settings);
+  });
 
   const guardsData = guardsDataRaw as GuardsData;
   const staffData = staffDataRaw as StaffData;
@@ -280,9 +300,18 @@ async function main(): Promise<void> {
 
   const staffEntities = staffData.staff.map((routeDef, i) => {
     const character = staffCharacters[i];
+    const appearance = applyCleanerAppearance(character.model);
     scene.add(character.model);
     enableCharacterShadows(character.model);
-    return { routeDef, model: character.model, animation: new StaffAnimationController(character.model, character.clips) };
+    return {
+      routeDef,
+      model: character.model,
+      animation: new StaffAnimationController(character.model, character.clips),
+      appearance,
+    };
+  });
+  disposeOnFinalPageHide(window, () => {
+    for (const staff of staffEntities) staff.appearance.dispose();
   });
 
   const doorPanels = level.doors.map((def) => {
@@ -292,24 +321,9 @@ async function main(): Promise<void> {
     return { def, panel };
   });
 
-  // Objective markers: a soft amber pillar over each objective point so the
-  // player can see where to go. The plant/photo markers hide once their
-  // objective is done; the exfil marker only appears once the device is
-  // planted. Driven by the same MISSION config as the mechanic, so they can
-  // never drift apart.
-  function objectiveMarker(x: number, z: number, color: number): THREE.Mesh {
-    const mesh = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.14, 0.14, 2.2, 12),
-      new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.5 }),
-    );
-    mesh.position.set(x, 1.1, z);
-    scene.add(mesh);
-    return mesh;
-  }
-  const plantMarker = objectiveMarker(MISSION.plant.x, MISSION.plant.z, PALETTE_HEX.amber);
-  const photoMarkers = MISSION.photos.map((p) => ({ id: p.id, mesh: objectiveMarker(p.x, p.z, 0x8a94a2) }));
-  const exfilMarker = objectiveMarker(MISSION.exfil.x, MISSION.exfil.z, PALETTE_HEX.amber);
-  exfilMarker.visible = false;
+  const missionVisuals = new MissionVisuals();
+  scene.add(missionVisuals.group);
+  disposeOnFinalPageHide(window, () => missionVisuals.dispose());
 
   const boltMeshGeometry = new THREE.SphereGeometry(0.08, 8, 8);
   const boltMeshMaterial = new THREE.MeshStandardMaterial({ color: 0xc7cdd4 });
@@ -373,9 +387,7 @@ async function main(): Promise<void> {
   // Phase 6 app flow: boot lands on the kiosk; the sim only advances while
   // running; the pause lanyard freezes it; the report freezes it via
   // the lifecycle report flag plus the mission-phase early return.
-  let settings: GameSettings = loadSettings();
   let shakeIntensityLive = settings.shakeIntensity;
-  let settingsOpen = false;
   let settingsReturnTo: 'kiosk' | 'pause' = 'kiosk';
   let prevStartHeld = false;
   let suppressInteractUntilRelease = false;
@@ -671,10 +683,12 @@ async function main(): Promise<void> {
     settings = next;
     saveSettings(settings);
     audio.setMasterVolume(settings.masterVolume);
+    followCamera.setDistance(settings.cameraDistance);
     setMotionLevel(settings.motionLevel);
     shakeIntensityLive = settings.shakeIntensity;
     document.documentElement.style.setProperty('--hud-scale', String(settings.hudScale));
     document.body.classList.toggle('high-contrast', settings.highContrast);
+    worldDressing.setHighContrast(settings.highContrast);
     if (floorChanged) {
       // High contrast also raises the darkness floor — part of the same
       // readability contract. Re-extrude the visual through the new curve;
@@ -963,6 +977,7 @@ async function main(): Promise<void> {
         DETECTION.vision.fovDegrees,
         beamAppearanceFor(guardState.state),
         animationPhaseMs / 200,
+        motionLevel(),
       );
       if (import.meta.env.DEV && guard.debugCone) {
         guard.debugCone.update(
@@ -993,17 +1008,11 @@ async function main(): Promise<void> {
     guardFootstepRingPool.update(frameDelta * 1000);
     guardFootstepRingRenderer.render(guardFootstepRingPool.rings);
 
-    // Objective markers: hide each once its objective is done; the exfil
-    // marker only appears once the device is planted.
     const mission = huntState.mission;
-    plantMarker.visible = mission.plantedAtMs === null;
-    for (const marker of photoMarkers) {
-      marker.mesh.visible = mission.photos[marker.id] === null;
-    }
-    exfilMarker.visible = mission.plantedAtMs !== null && mission.exfilledAtMs === null;
-    const markerBob = 0.15 * Math.sin(animationPhaseMs / 400);
-    plantMarker.position.y = 1.1 + markerBob;
-    exfilMarker.position.y = 1.1 + markerBob;
+    missionVisuals.update(mission, animationPhaseMs, {
+      motionLevel: motionLevel(),
+      highContrast: settings.highContrast,
+    });
 
     const activeBoltIds = new Set<number>();
     for (const bolt of huntState.bolts) {
@@ -1155,6 +1164,7 @@ async function main(): Promise<void> {
         forwardZ: camForward.z / forwardLen,
         zone: level.cells[Math.floor(huntState.player.z)]?.[Math.floor(huntState.player.x)]?.zone ?? null,
         mutterSource,
+        alertLevel: huntState.alertLevel.level,
         dawn: huntState.mission.phase === 'dawn',
       },
       performance.now(),

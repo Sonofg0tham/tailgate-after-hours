@@ -14,7 +14,7 @@ const MINIMAL = {
     '=': { kind: 'door', zone: 'room', open: false },
   },
   zones: {
-    room: { label: 'Room', surface: 'concrete', tint: '#000000' },
+    room: { label: 'Room', surface: 'concrete', tint: '#000000', visualProfile: 'service' },
   },
   layout: ['#####', '#d+=#', '#####'],
   furniture: [{ x: 1, y: 1, type: 'desk' }],
@@ -87,6 +87,21 @@ describe('parseLevel', () => {
 
     expect(() => parseLevel(invalid)).toThrow(/display name/i);
   });
+
+  it.each([
+    ['missing', undefined],
+    ['blank', ''],
+    ['unknown', 'warehouse'],
+  ])('rejects a zone with a %s visual profile', (_case, visualProfile) => {
+    const invalid = {
+      ...MINIMAL,
+      zones: {
+        room: { ...MINIMAL.zones.room, visualProfile },
+      },
+    } as unknown as LevelData;
+
+    expect(() => parseLevel(invalid)).toThrow(/visual profile/i);
+  });
 });
 
 describe('isWall / isSolid', () => {
@@ -126,6 +141,22 @@ describe('blocksSight', () => {
 
 describe('Floor 12 data', () => {
   const level = parseLevel(floor12 as LevelData);
+
+  it('assigns the intended render-only profile to every authored zone', () => {
+    expect(
+      Object.fromEntries(Object.entries(level.zones).map(([id, zone]) => [id, zone.visualProfile])),
+    ).toEqual({
+      corridor: 'service',
+      reception: 'lobby',
+      office: 'office',
+      kitchen: 'service',
+      'print-room': 'service',
+      'server-room': 'server',
+      'corner-office': 'office',
+      maintenance: 'service',
+      ledge: 'edge',
+    });
+  });
 
   it('every zone is reachable from playerStart', () => {
     expect(findUnreachableZones(level)).toEqual([]);
