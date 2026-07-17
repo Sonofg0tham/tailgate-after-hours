@@ -189,7 +189,9 @@ async function main(): Promise<void> {
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   scene.add(new THREE.AmbientLight(RENDER_LIGHTING.ambient.color, RENDER_LIGHTING.ambient.intensity));
-  scene.add(buildFixtures(level));
+  const fixtures = buildFixtures(level);
+  scene.add(fixtures.group);
+  window.addEventListener('pagehide', () => fixtures.dispose(), { once: true });
 
   // The nystagmus visibility floor's character half: the operator always
   // reads, whatever the darkness. Concealment is unchanged — sim never sees this.
