@@ -982,7 +982,8 @@ async function main(): Promise<void> {
     guardFootstepRingPool.update(frameDelta * 1000);
     guardFootstepRingRenderer.render(guardFootstepRingPool.rings);
 
-    missionVisuals.update(huntState.mission, animationPhaseMs, {
+    const mission = huntState.mission;
+    missionVisuals.update(mission, animationPhaseMs, {
       motionLevel: motionLevel(),
       highContrast: settings.highContrast,
     });
