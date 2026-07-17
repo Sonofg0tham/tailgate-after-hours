@@ -7,6 +7,8 @@
 
 export type CellKind = 'wall' | 'floor' | 'door' | 'furniture';
 export type SurfaceType = 'carpet' | 'tile' | 'concrete';
+export const ZONE_VISUAL_PROFILES = ['lobby', 'office', 'service', 'server', 'edge'] as const;
+export type ZoneVisualProfile = (typeof ZONE_VISUAL_PROFILES)[number];
 
 export interface LegendEntry {
   kind: CellKind;
@@ -36,6 +38,8 @@ export interface ZoneDef {
   surface: SurfaceType;
   /** Debug-only "surface tints" overlay colour. Never the only way a zone reads. */
   tint: string;
+  /** Render-only dressing family. Simulation continues to read the grid cells above. */
+  visualProfile: ZoneVisualProfile;
 }
 
 export interface FurniturePlacement {
@@ -62,6 +66,8 @@ export interface DoorKindDef {
   y: number;
   id: string;
   kind: 'badge' | 'smokers' | 'lift';
+  /** Short access-control name rendered on the in-world door panel. */
+  displayName: string;
 }
 
 /** The raw shape of src/data/floor12.json. */
@@ -111,6 +117,12 @@ export function parseLevel(data: LevelData): ParsedLevel {
     throw new Error(`Level layout has ${data.layout.length} rows, expected height ${data.height}`);
   }
 
+  for (const [zoneId, zone] of Object.entries(data.zones)) {
+    if (!ZONE_VISUAL_PROFILES.includes(zone.visualProfile as ZoneVisualProfile)) {
+      throw new Error(`Zone "${zoneId}" requires a valid visual profile`);
+    }
+  }
+
   const cells: ParsedCell[][] = data.layout.map((row, y) => {
     if (row.length !== data.width) {
       throw new Error(`Level layout row ${y} has length ${row.length}, expected width ${data.width}`);
@@ -145,6 +157,9 @@ export function parseLevel(data: LevelData): ParsedLevel {
   }
 
   for (const d of data.doors) {
+    if (typeof d.displayName !== 'string' || d.displayName.trim().length === 0) {
+      throw new Error(`Door "${d.id}" requires a valid display name`);
+    }
     const cell = cells[d.y]?.[d.x];
     if (!cell || cell.kind !== 'door') {
       throw new Error(`Door entry ${JSON.stringify(d)} doesn't sit on a door cell at (${d.x}, ${d.y})`);

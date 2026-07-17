@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { generateReport } from './generateReport';
 import { decideRating } from './rating';
-import { createMissionState, type MissionState } from '../sim/MissionState';
+import { abandonMission, createMissionState, type MissionState } from '../sim/MissionState';
 import { MISSION } from '../config/mission';
 
 function exfilled(over: Partial<MissionState> = {}): MissionState {
@@ -129,5 +129,44 @@ describe('generateReport', () => {
     expect(report.header.outcomeLine).toContain('DEVICE PLANTED');
     const plant = report.findings.find((f) => f.text.includes('planted'));
     expect(plant?.text).toContain('did not clear the site before dawn');
+  });
+});
+
+describe('the ABANDONED outcome (Phase 6)', () => {
+  it('outranks everything, files the run so far, and stamps the abandon time', () => {
+    const mission: MissionState = {
+      ...createMissionState(),
+      phase: 'abandoned',
+      abandonedAtMs: 180_000, // 02:00 on the night clock
+      ingressRoute: 'lift',
+      ingressAtMs: 24_000, // 01:08
+      detains: 1,
+      everSpotted: true,
+      maxAlertLevel: 2,
+    };
+    const report = generateReport(mission);
+    expect(report.rating).toBe('ABANDONED');
+    expect(report.abandoned).toBe(true);
+    expect(report.header.outcomeLine).toBe('ENGAGEMENT ABANDONED BY THE CONSULTANT AT 02:00');
+    // Time on site: ingress 01:08 to abandon 02:00 = 00:52 fictional.
+    expect(report.summary.timeOnSite).toBe('00:52');
+    // The findings that DID happen still file.
+    expect(report.clientDetections.some((l) => l.includes('detained'))).toBe(true);
+  });
+
+  it('a planted-then-abandoned run marks the device disposition unconfirmed', () => {
+    const mission: MissionState = { ...createMissionState(), phase: 'abandoned', abandonedAtMs: 400_000, plantedAtMs: 300_000 };
+    const plant = generateReport(mission).findings.find((f) => f.text.includes('planted'));
+    expect(plant?.text).toContain('device disposition unconfirmed');
+  });
+
+  it('abandonMission is a pure one-way door from infiltrating only', () => {
+    const live = createMissionState();
+    const gone = abandonMission(live, 5000);
+    expect(gone.phase).toBe('abandoned');
+    expect(gone.abandonedAtMs).toBe(5000);
+    expect(live.phase).toBe('infiltrating'); // pure
+    const exfilledRun: MissionState = { ...createMissionState(), phase: 'exfilled' };
+    expect(abandonMission(exfilledRun, 9000)).toBe(exfilledRun); // no-op after the end
   });
 });

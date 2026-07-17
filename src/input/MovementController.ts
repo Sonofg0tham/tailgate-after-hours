@@ -29,6 +29,11 @@ export class MovementController {
     return { directionX: 0, directionZ: 0, speed: 'idle', crouched: false, device: this.lastDevice };
   }
 
+  /** Clears presentation-only device memory between independent engagements. */
+  reset(): void {
+    this.lastDevice = 'none';
+  }
+
   /** World-space speed in metres/second for a given speed state. */
   static speedMetresPerSecond(speed: MovementIntent['speed']): number {
     return speed === 'idle' ? 0 : MOVEMENT.speeds[speed];

@@ -1,6 +1,6 @@
 import { MISSION } from '../config/mission';
 
-export type MissionPhase = 'infiltrating' | 'exfilled' | 'dawn';
+export type MissionPhase = 'infiltrating' | 'exfilled' | 'dawn' | 'abandoned';
 
 /**
  * Everything about the mission's progress the simulation needs to reproduce
@@ -48,6 +48,21 @@ export interface MissionState {
 
   /** Elapsed sim ms at exfil (mission end), or null. */
   exfilledAtMs: number | null;
+  /** Elapsed sim ms when the consultant abandoned from the pause lanyard, or null. */
+  abandonedAtMs: number | null;
+}
+
+/**
+ * The player abandons from the pause lanyard: the engagement ends where it
+ * stands and the report files what actually happened so far, stamped
+ * ABANDONED. A pure transform (Phase 6), applied from the UI — stepMission
+ * already no-ops on any non-infiltrating phase.
+ */
+export function abandonMission(mission: MissionState, atMs: number): MissionState {
+  if (mission.phase !== 'infiltrating') {
+    return mission;
+  }
+  return { ...mission, phase: 'abandoned', abandonedAtMs: atMs, holdObjectiveId: null, holdProgressMs: 0 };
 }
 
 export function createMissionState(): MissionState {
@@ -66,5 +81,6 @@ export function createMissionState(): MissionState {
     ingressRoute: null,
     ingressAtMs: null,
     exfilledAtMs: null,
+    abandonedAtMs: null,
   };
 }

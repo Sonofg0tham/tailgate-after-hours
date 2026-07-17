@@ -12,7 +12,7 @@ function levelFromLayout(layout: string[]): ReturnType<typeof parseLevel> {
       '#': { kind: 'wall' },
       '.': { kind: 'floor', zone: 'room' },
     },
-    zones: { room: { label: 'Room', surface: 'concrete', tint: '#000' } },
+    zones: { room: { label: 'Room', surface: 'concrete', tint: '#000', visualProfile: 'service' } },
     layout,
     furniture: [],
     lights: [],

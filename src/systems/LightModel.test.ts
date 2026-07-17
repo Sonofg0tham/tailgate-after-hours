@@ -37,7 +37,7 @@ describe('buildLightGrid / lightLevelAtWorld', () => {
     width: 4,
     height: 4,
     legend: { '.': { kind: 'floor', zone: 'room' } },
-    zones: { room: { label: 'Room', surface: 'concrete', tint: '#000' } },
+    zones: { room: { label: 'Room', surface: 'concrete', tint: '#000', visualProfile: 'service' } },
     layout: ['....', '....', '....', '....'],
     furniture: [],
     lights: [{ x: 1, y: 1, radius: 3, intensity: 1 }],
@@ -55,5 +55,62 @@ describe('buildLightGrid / lightLevelAtWorld', () => {
   it('looks up by world position through the same grid', () => {
     const grid = buildLightGrid(level);
     expect(lightLevelAtWorld(grid, 1, 1.5, 1.5)).toBeCloseTo(grid[1][1], 5);
+  });
+});
+
+describe('occlusion (Phase 5)', () => {
+  // Four isolated corridors (wall rows between them so nothing leaks
+  // diagonally across scenarios), each with its own light at x=1 and a
+  // different obstacle at x=3: a wall, a closed door, an open door, a desk.
+  // Radius 7 covers the whole row, so any darkness past x=3 is occlusion,
+  // not falloff.
+  const level = parseLevel({
+    cellSize: 1,
+    width: 9,
+    height: 7,
+    legend: {
+      '.': { kind: 'floor', zone: 'room' },
+      '#': { kind: 'wall' },
+      '=': { kind: 'door', zone: 'room', open: false },
+      '+': { kind: 'door', zone: 'room', open: true },
+      d: { kind: 'furniture', zone: 'room', furnitureType: 'desk' },
+    },
+    zones: { room: { label: 'Room', surface: 'concrete', tint: '#000', visualProfile: 'service' } },
+    layout: ['...#.....', '#########', '...=.....', '#########', '...+.....', '#########', '...d.....'],
+    furniture: [{ x: 3, y: 6, type: 'desk' }],
+    lights: [
+      { x: 1, y: 0, radius: 7, intensity: 1 },
+      { x: 1, y: 2, radius: 7, intensity: 1 },
+      { x: 1, y: 4, radius: 7, intensity: 1 },
+      { x: 1, y: 6, radius: 7, intensity: 1 },
+    ],
+    doors: [],
+    playerStart: { x: 0, y: 0 },
+  } as LevelData);
+
+  it('a wall stops placed light dead', () => {
+    expect(lightLevelAt(level.lights, 5, 0, level)).toBeCloseTo(LIGHTING.ambientLevel, 5);
+  });
+
+  it('a statically closed door stops placed light', () => {
+    expect(lightLevelAt(level.lights, 5, 2, level)).toBeCloseTo(LIGHTING.ambientLevel, 5);
+  });
+
+  it('an open door lets light through', () => {
+    expect(lightLevelAt(level.lights, 5, 4, level)).toBeGreaterThan(LIGHTING.ambientLevel + 0.1);
+  });
+
+  it('furniture does not block light (it passes over a desk)', () => {
+    expect(lightLevelAt(level.lights, 5, 6, level)).toBeGreaterThan(LIGHTING.ambientLevel + 0.1);
+  });
+
+  it('without a level passed, behaviour is the old unoccluded falloff', () => {
+    expect(lightLevelAt(level.lights, 5, 0)).toBeGreaterThan(LIGHTING.ambientLevel + 0.1);
+  });
+
+  it('buildLightGrid occludes: the grid itself is dark behind the wall', () => {
+    const grid = buildLightGrid(level);
+    expect(grid[0][5]).toBeCloseTo(LIGHTING.ambientLevel, 5);
+    expect(grid[4][5]).toBeGreaterThan(LIGHTING.ambientLevel + 0.1);
   });
 });

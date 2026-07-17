@@ -5,17 +5,25 @@ import type { MissionState } from '../sim/MissionState';
  * from Tailgate's actual `decideRating` (first match wins, same thresholds).
  * DAWN is new to the night engagement: reaching 05:00 without planting-and-
  * exfilling is a distinct outcome, not one of the four success grades.
+ * ABANDONED (Phase 6) is the consultant signing out mid-engagement from the
+ * pause lanyard — filed, never a best, the Patch Tuesday rule.
  */
-export type Rating = 'GHOST' | 'PROFESSIONAL' | 'NOISY' | 'DETAINED' | 'DAWN';
+export type Rating = 'GHOST' | 'PROFESSIONAL' | 'NOISY' | 'DETAINED' | 'DAWN' | 'ABANDONED';
 
 /**
  * Decides the rating and its deadpan remark, purely from the mission facts.
- * The order is load-bearing: dawn first (an incomplete engagement outranks
- * everything), then Tailgate's ladder — a detain beats an alarm beats a
- * sighting beats a clean run. Remarks are reworded from Tailgate's in the
- * project's own voice (UK English, no em-dashes).
+ * The order is load-bearing: abandoned and dawn first (incomplete
+ * engagements outrank everything), then Tailgate's ladder — a detain beats
+ * an alarm beats a sighting beats a clean run. Remarks are reworded from
+ * Tailgate's in the project's own voice (UK English, no em-dashes).
  */
 export function decideRating(mission: MissionState): { rating: Rating; remark: string } {
+  if (mission.phase === 'abandoned') {
+    return {
+      rating: 'ABANDONED',
+      remark: 'Engagement terminated by the consultant. The findings below cover the portion of the night that happened.',
+    };
+  }
   if (mission.phase === 'dawn') {
     return {
       rating: 'DAWN',
