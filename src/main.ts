@@ -21,9 +21,9 @@ import { FpsMeter } from './perf/FpsMeter';
 import { applyPaletteToCss, PALETTE_HEX } from './config/palette';
 import { DETECTION } from './config/detection';
 import { THROW } from './config/throw';
-import { MISSION } from './config/mission';
 import { boundedDevicePixelRatio, gridBrightness, RENDER_LIGHTING } from './config/renderLighting';
 import { buildFixtures } from './world/Fixtures';
+import { MissionVisuals } from './world/MissionVisuals';
 import { AudioEngine } from './audio/AudioEngine';
 import { AUDIO } from './config/audio';
 import { hasLineOfSight } from './systems/Vision';
@@ -294,24 +294,9 @@ async function main(): Promise<void> {
     return { def, panel };
   });
 
-  // Objective markers: a soft amber pillar over each objective point so the
-  // player can see where to go. The plant/photo markers hide once their
-  // objective is done; the exfil marker only appears once the device is
-  // planted. Driven by the same MISSION config as the mechanic, so they can
-  // never drift apart.
-  function objectiveMarker(x: number, z: number, color: number): THREE.Mesh {
-    const mesh = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.14, 0.14, 2.2, 12),
-      new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.5 }),
-    );
-    mesh.position.set(x, 1.1, z);
-    scene.add(mesh);
-    return mesh;
-  }
-  const plantMarker = objectiveMarker(MISSION.plant.x, MISSION.plant.z, PALETTE_HEX.amber);
-  const photoMarkers = MISSION.photos.map((p) => ({ id: p.id, mesh: objectiveMarker(p.x, p.z, 0x8a94a2) }));
-  const exfilMarker = objectiveMarker(MISSION.exfil.x, MISSION.exfil.z, PALETTE_HEX.amber);
-  exfilMarker.visible = false;
+  const missionVisuals = new MissionVisuals();
+  scene.add(missionVisuals.group);
+  window.addEventListener('pagehide', () => missionVisuals.dispose(), { once: true });
 
   const boltMeshGeometry = new THREE.SphereGeometry(0.08, 8, 8);
   const boltMeshMaterial = new THREE.MeshStandardMaterial({ color: 0xc7cdd4 });
@@ -997,17 +982,10 @@ async function main(): Promise<void> {
     guardFootstepRingPool.update(frameDelta * 1000);
     guardFootstepRingRenderer.render(guardFootstepRingPool.rings);
 
-    // Objective markers: hide each once its objective is done; the exfil
-    // marker only appears once the device is planted.
-    const mission = huntState.mission;
-    plantMarker.visible = mission.plantedAtMs === null;
-    for (const marker of photoMarkers) {
-      marker.mesh.visible = mission.photos[marker.id] === null;
-    }
-    exfilMarker.visible = mission.plantedAtMs !== null && mission.exfilledAtMs === null;
-    const markerBob = 0.15 * Math.sin(animationPhaseMs / 400);
-    plantMarker.position.y = 1.1 + markerBob;
-    exfilMarker.position.y = 1.1 + markerBob;
+    missionVisuals.update(huntState.mission, animationPhaseMs, {
+      motionLevel: motionLevel(),
+      highContrast: settings.highContrast,
+    });
 
     const activeBoltIds = new Set<number>();
     for (const bolt of huntState.bolts) {
