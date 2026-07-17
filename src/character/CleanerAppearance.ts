@@ -73,14 +73,17 @@ export function applyCleanerAppearance(model: THREE.Object3D): CleanerAppearance
   accessories.name = 'cleaner-appearance';
 
   const beltMaterial = new THREE.MeshStandardMaterial({ color: BELT_COLOUR, roughness: 0.9 });
+  const uniformMaterial = new THREE.MeshStandardMaterial({ color: CLEANER_UNIFORM_COLOUR, roughness: 0.88 });
   const packMaterial = new THREE.MeshStandardMaterial({ color: PACK_COLOUR, roughness: 0.85 });
   const bottleMaterial = new THREE.MeshStandardMaterial({ color: BOTTLE_COLOUR, roughness: 0.55 });
 
   const beltGeometry = new THREE.BoxGeometry(0.53, 0.1, 0.3);
+  const uniformGeometry = new THREE.BoxGeometry(0.46, 0.58, 0.11);
   const packGeometry = new THREE.BoxGeometry(0.34, 0.45, 0.16);
   const bottleGeometry = new THREE.CylinderGeometry(0.055, 0.065, 0.24, 8);
 
   accessories.add(
+    accessoryMesh('cleaner-uniform-apron', uniformGeometry, uniformMaterial, [0, 1.22, 0.19]),
     accessoryMesh('cleaner-utility-belt', beltGeometry, beltMaterial, [0, 0.9, 0]),
     accessoryMesh('cleaner-cleaning-pack', packGeometry, packMaterial, [0, 1.1, -0.2]),
     accessoryMesh('cleaner-bottle', bottleGeometry, bottleMaterial, [0.28, 0.88, -0.11]),
@@ -99,9 +102,11 @@ export function applyCleanerAppearance(model: THREE.Object3D): CleanerAppearance
 
       for (const material of clonedMaterials.values()) material.dispose();
       beltGeometry.dispose();
+      uniformGeometry.dispose();
       packGeometry.dispose();
       bottleGeometry.dispose();
       beltMaterial.dispose();
+      uniformMaterial.dispose();
       packMaterial.dispose();
       bottleMaterial.dispose();
     },

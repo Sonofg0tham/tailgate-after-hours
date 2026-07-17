@@ -56,6 +56,7 @@ describe('cleaner appearance', () => {
     applyCleanerAppearance(cleaner.model);
 
     expect(cleaner.model.getObjectByName('cleaner-appearance')).toBeInstanceOf(THREE.Group);
+    expect(cleaner.model.getObjectByName('cleaner-uniform-apron')).toBeInstanceOf(THREE.Mesh);
     expect(cleaner.model.getObjectByName('cleaner-utility-belt')).toBeInstanceOf(THREE.Mesh);
     expect(cleaner.model.getObjectByName('cleaner-cleaning-pack')).toBeInstanceOf(THREE.Mesh);
     expect(cleaner.model.getObjectByName('cleaner-bottle')).toBeInstanceOf(THREE.Mesh);
