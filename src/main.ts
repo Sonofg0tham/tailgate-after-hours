@@ -966,6 +966,7 @@ async function main(): Promise<void> {
         DETECTION.vision.fovDegrees,
         beamAppearanceFor(guardState.state),
         animationPhaseMs / 200,
+        motionLevel(),
       );
       if (import.meta.env.DEV && guard.debugCone) {
         guard.debugCone.update(

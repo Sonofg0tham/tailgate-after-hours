@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { raycastDistance } from '../systems/Vision';
 import { RENDER_LIGHTING } from '../config/renderLighting';
+import type { MotionLevel } from '../systems/Motion';
 import type { ParsedLevel } from '../world/level';
 
 const SEGMENTS = 16;
@@ -88,6 +89,7 @@ export class TorchBeam {
     fovDegrees: number,
     appearance: BeamAppearance,
     animationPhase: number,
+    motionLevel: MotionLevel = 'full',
   ): void {
     const halfFov = (fovDegrees * Math.PI) / 180 / 2;
 
@@ -120,7 +122,12 @@ export class TorchBeam {
 
     this.material.color.setHex(appearance === 'locked' ? 0xff3b30 : 0xffb000);
     this.light.color.setHex(appearance === 'locked' ? torch.lockedColor : torch.color);
-    if (appearance === 'flicker') {
+    if (appearance === 'flicker' && motionLevel === 'reduced') {
+      // Keep searching visibly distinct without a pulsing light when the
+      // player has asked for calm motion.
+      this.material.opacity = 0.29;
+      this.light.intensity = torch.intensity * (1 - torch.flickerDepth * 0.5);
+    } else if (appearance === 'flicker') {
       this.material.opacity = 0.22 + Math.sin(animationPhase) * 0.13;
       this.light.intensity = torch.intensity * (1 - torch.flickerDepth * (0.5 + 0.5 * Math.sin(animationPhase)));
     } else if (appearance === 'locked') {
