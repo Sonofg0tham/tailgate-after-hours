@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { raycastDistance } from '../systems/Vision';
 import { RENDER_LIGHTING } from '../config/renderLighting';
+import type { MotionLevel } from '../systems/Motion';
 import type { ParsedLevel } from '../world/level';
 
 const SEGMENTS = 16;
@@ -33,6 +34,7 @@ export class TorchBeam {
   private readonly mesh: THREE.Mesh;
   private readonly material: THREE.MeshBasicMaterial;
   private readonly geometry: THREE.BufferGeometry;
+  private readonly positionAttribute: THREE.BufferAttribute;
   private readonly light: THREE.SpotLight;
   private readonly lightTarget: THREE.Object3D;
 
@@ -49,6 +51,17 @@ export class TorchBeam {
       blending: THREE.AdditiveBlending,
     });
     this.geometry = new THREE.BufferGeometry();
+    const positions = new Float32Array((SEGMENTS + 2) * 3);
+    const indices = new Uint16Array(SEGMENTS * 3);
+    for (let i = 0; i < SEGMENTS; i++) {
+      const offset = i * 3;
+      indices[offset] = 0;
+      indices[offset + 1] = i + 1;
+      indices[offset + 2] = i + 2;
+    }
+    this.positionAttribute = new THREE.BufferAttribute(positions, 3).setUsage(THREE.DynamicDrawUsage);
+    this.geometry.setAttribute('position', this.positionAttribute);
+    this.geometry.setIndex(new THREE.BufferAttribute(indices, 1));
     this.mesh = new THREE.Mesh(this.geometry, this.material);
     this.mesh.renderOrder = 5;
 
@@ -76,26 +89,26 @@ export class TorchBeam {
     fovDegrees: number,
     appearance: BeamAppearance,
     animationPhase: number,
+    motionLevel: MotionLevel = 'full',
   ): void {
     const halfFov = (fovDegrees * Math.PI) / 180 / 2;
 
-    const positions: number[] = [0, BEAM_HEIGHT, 0]; // fan origin, local space
+    const positions = this.positionAttribute.array as Float32Array;
+    positions[0] = 0;
+    positions[1] = BEAM_HEIGHT;
+    positions[2] = 0;
     for (let i = 0; i <= SEGMENTS; i++) {
       const angle = facingYaw - halfFov + (i / SEGMENTS) * halfFov * 2;
       const dist = raycastDistance(level, originX, originZ, angle, rangeCells);
       const localX = Math.sin(angle) * dist;
       const localZ = Math.cos(angle) * dist;
-      positions.push(localX, BEAM_HEIGHT, localZ);
+      const offset = (i + 1) * 3;
+      positions[offset] = localX;
+      positions[offset + 1] = BEAM_HEIGHT;
+      positions[offset + 2] = localZ;
     }
-
-    const indices: number[] = [];
-    for (let i = 1; i <= SEGMENTS; i++) {
-      indices.push(0, i, i + 1);
-    }
-
-    this.geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-    this.geometry.setIndex(indices);
-    this.geometry.computeVertexNormals();
+    this.positionAttribute.needsUpdate = true;
+    this.geometry.computeBoundingSphere();
     this.mesh.position.set(originX, 0, originZ);
 
     // The spotlight rides the same origin and facing as the fan.
@@ -109,7 +122,12 @@ export class TorchBeam {
 
     this.material.color.setHex(appearance === 'locked' ? 0xff3b30 : 0xffb000);
     this.light.color.setHex(appearance === 'locked' ? torch.lockedColor : torch.color);
-    if (appearance === 'flicker') {
+    if (appearance === 'flicker' && motionLevel === 'reduced') {
+      // Keep searching visibly distinct without a pulsing light when the
+      // player has asked for calm motion.
+      this.material.opacity = 0.29;
+      this.light.intensity = torch.intensity * (1 - torch.flickerDepth * 0.5);
+    } else if (appearance === 'flicker') {
       this.material.opacity = 0.22 + Math.sin(animationPhase) * 0.13;
       this.light.intensity = torch.intensity * (1 - torch.flickerDepth * (0.5 + 0.5 * Math.sin(animationPhase)));
     } else if (appearance === 'locked') {

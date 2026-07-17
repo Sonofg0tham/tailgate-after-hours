@@ -41,6 +41,11 @@ Character Animations pack (same skeleton, same publisher, same licence)
 covers crouch-idle and crouch-walk too — so Mixamo was never used, in Phase
 -1 or here.
 
+## First-party assets (listed so the audit trail is complete)
+
+- public/favicon.svg | hand-authored in this repo (an access badge in the
+  project palette) | Craig McCart / Sonofg0tham | MIT, same as the code
+
 ## Fonts
 
 Both bundled as npm packages via Fontsource, both licensed under the SIL Open

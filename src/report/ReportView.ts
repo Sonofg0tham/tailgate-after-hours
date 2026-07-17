@@ -1,8 +1,8 @@
 import { JUICE } from '../config/juice';
 import type { ReportModel, Rating } from './generateReport';
 
-/** DETAINED and DAWN are the outcomes that went wrong — shown in alarm red; the rest read amber. */
-const BAD_RATINGS: ReadonlySet<Rating> = new Set<Rating>(['DETAINED', 'DAWN']);
+/** DETAINED, DAWN and ABANDONED are the outcomes that went wrong — shown in alarm red; the rest read amber. */
+const BAD_RATINGS: ReadonlySet<Rating> = new Set<Rating>(['DETAINED', 'DAWN', 'ABANDONED']);
 
 /**
  * Renders the Engagement Report model into the #report overlay — the signature
@@ -24,7 +24,7 @@ export class ReportView {
     this.sheet = sheet;
   }
 
-  show(model: ReportModel, onNewEngagement: () => void): void {
+  show(model: ReportModel, actions: { onNewEngagement: () => void; onSignOut: () => void }): void {
     this.sheet.replaceChildren();
 
     this.sheet.append(el('h1', undefined, 'ENGAGEMENT REPORT'));
@@ -84,11 +84,16 @@ export class ReportView {
     summary.append(kv('Secondaries', model.summary.secondaries));
     this.sheet.append(summary);
 
-    // New engagement.
+    // New engagement, or back to the kiosk.
     const button = el('button', undefined, '[ NEW ENGAGEMENT ]');
     button.id = 'report-new-engagement';
-    button.addEventListener('click', onNewEngagement);
+    button.addEventListener('click', actions.onNewEngagement);
     this.sheet.append(button);
+    const signOut = el('button', undefined, '[ SIGN OUT ]');
+    signOut.id = 'report-sign-out';
+    signOut.className = 'kiosk-button-secondary';
+    signOut.addEventListener('click', actions.onSignOut);
+    this.sheet.append(signOut);
 
     // The document arrives: sections reveal in order (CSS animates; the
     // reduced-motion body class or media query renders it complete and

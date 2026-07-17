@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cameraHeightAboveFloor, deadzoneTarget, easeExponential } from './FollowCamera';
+import { cameraHeightAboveFloor, deadzoneTarget, easeExponential, FollowCamera } from './FollowCamera';
 import { MOVEMENT } from '../config/movement';
 import { WALL_HEIGHT } from '../world/Extruder';
 
@@ -33,5 +33,46 @@ describe('camera never clips through walls', () => {
   it('stays above wall height even at the closest allowed zoom', () => {
     const heightAtMinDistance = cameraHeightAboveFloor(MOVEMENT.camera.minDistance, MOVEMENT.camera.tiltDegrees);
     expect(heightAtMinDistance).toBeGreaterThan(WALL_HEIGHT);
+  });
+});
+
+describe('camera distance', () => {
+  it('defaults to exactly 8.5 m, clamps live settings, and keeps wheel zoom bounded', () => {
+    const originalWindow = Object.getOwnPropertyDescriptor(globalThis, 'window');
+    const listeners: Record<string, (event: { deltaY: number }) => void> = {};
+    Object.defineProperty(globalThis, 'window', {
+      configurable: true,
+      value: {
+        addEventListener: (type: string, listener: (event: { deltaY: number }) => void) => {
+          listeners[type] = listener;
+        },
+      },
+    });
+
+    try {
+      const wheelChanges: number[] = [];
+      const camera = new FollowCamera(16 / 9, (distance) => wheelChanges.push(distance));
+      expect(camera.distance).toBe(8.5);
+
+      camera.setDistance(10);
+      expect(camera.distance).toBe(10);
+      camera.setDistance(99);
+      expect(camera.distance).toBe(MOVEMENT.camera.maxDistance);
+      camera.setDistance(-99);
+      expect(camera.distance).toBe(MOVEMENT.camera.minDistance);
+
+      camera.setDistance(8.5);
+      listeners.wheel({ deltaY: 10_000 });
+      expect(camera.distance).toBe(MOVEMENT.camera.maxDistance);
+      listeners.wheel({ deltaY: -10_000 });
+      expect(camera.distance).toBe(MOVEMENT.camera.minDistance);
+      expect(wheelChanges).toEqual([MOVEMENT.camera.maxDistance, MOVEMENT.camera.minDistance]);
+    } finally {
+      if (originalWindow) {
+        Object.defineProperty(globalThis, 'window', originalWindow);
+      } else {
+        Reflect.deleteProperty(globalThis, 'window');
+      }
+    }
   });
 });

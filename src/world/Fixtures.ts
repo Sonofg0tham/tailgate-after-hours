@@ -12,7 +12,12 @@ import type { ParsedLevel } from '../world/level';
  * panels as the default, a desk lamp in the corner office, an LED wash in
  * the server room, the vending-machine glow in the kitchen.
  */
-export function buildFixtures(level: ParsedLevel): THREE.Group {
+export interface FixtureVisuals {
+  group: THREE.Group;
+  dispose(): void;
+}
+
+export function buildFixtures(level: ParsedLevel): FixtureVisuals {
   const group = new THREE.Group();
   const { cellSize } = level;
 
@@ -36,7 +41,28 @@ export function buildFixtures(level: ParsedLevel): THREE.Group {
     group.add(light);
   }
 
-  return group;
+  const geometries = new Set<THREE.BufferGeometry>();
+  const materials = new Set<THREE.Material>();
+  group.traverse((object) => {
+    const renderable = object as THREE.Mesh;
+    if (renderable.geometry) geometries.add(renderable.geometry);
+    if (renderable.material) {
+      const list = Array.isArray(renderable.material) ? renderable.material : [renderable.material];
+      for (const material of list) materials.add(material);
+    }
+  });
+  let disposed = false;
+
+  return {
+    group,
+    dispose() {
+      if (disposed) return;
+      disposed = true;
+      for (const geometry of geometries) geometry.dispose();
+      for (const material of materials) material.dispose();
+      group.clear();
+    },
+  };
 }
 
 function emissive(color: number): THREE.MeshBasicMaterial {

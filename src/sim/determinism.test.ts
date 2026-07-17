@@ -4,7 +4,7 @@ import { extrudeLevel } from '../world/Extruder';
 import { buildLightGrid } from '../systems/LightModel';
 import { createDoorState, doorOpenLookup } from '../systems/DoorState';
 import { findPath } from '../systems/Pathfinding';
-import { InputRecorder, replay, replayHunt, type InputLog } from './InputLog';
+import { EngagementInputSession, InputRecorder, replay, replayHunt, type InputLog } from './InputLog';
 import { stepHunt, type HuntEnvironment, type HuntState } from './stepHunt';
 import { createGuardState, type GuardsData, type GuardState } from '../entities/GuardState';
 import { createStaffState, type StaffData } from '../entities/StaffState';
@@ -41,6 +41,40 @@ function scriptedRun(): InputLog {
   for (let i = 0; i < 20; i++) recorder.record(tick++, intent(0, 0, 'idle'));
   return recorder.toLog();
 }
+
+describe('engagement input session lifecycle', () => {
+  it('produces independent, replayable logs for consecutive engagements', () => {
+    const session = new EngagementInputSession('SESSION-TEST', STEP_SECONDS, startState);
+    session.intentFrozen = true;
+    session.drivenIntent = intent(1, 0, 'run');
+    session.drivenInteract = true;
+    session.startReplay(scriptedRun());
+    session.record(intent(0, -1));
+    const firstLog = session.toLog();
+
+    const nextStart = { ...startState, x: startState.x + 1 };
+    session.reset(nextStart);
+    session.record(intent(0, 1, 'creep'));
+    const secondLog = session.toLog();
+
+    expect(firstLog).toMatchObject({
+      startState,
+      entries: [{ tick: 0, intent: intent(0, -1), throwAction: null, interactHeld: false }],
+    });
+    expect(secondLog).toMatchObject({
+      startState: nextStart,
+      entries: [{ tick: 0, intent: intent(0, 1, 'creep'), throwAction: null, interactHeld: false }],
+    });
+    expect(firstLog.entries).not.toBe(secondLog.entries);
+    expect(replay(firstLog, extruded.wallBounds)).toEqual(replay(firstLog, extruded.wallBounds));
+    expect(replay(secondLog, extruded.wallBounds)).toEqual(replay(secondLog, extruded.wallBounds));
+    expect(replay(firstLog, extruded.wallBounds)).not.toEqual(replay(secondLog, extruded.wallBounds));
+    expect(session.takeReplayEntry()).toBeNull();
+    expect(session.intentFrozen).toBe(false);
+    expect(session.drivenIntent).toBeNull();
+    expect(session.drivenInteract).toBeNull();
+  });
+});
 
 describe('replay determinism (seed + input log)', () => {
   it('two replays of the same log are byte-identical', () => {
@@ -303,12 +337,47 @@ describe('replay determinism over a full mission (Phase 4)', () => {
     expect(decideRating(replayA.mission).rating).toBe('GHOST');
   });
 
+  it('assist mode (guardSpeedScale 0.9) replays byte-identically and diverges from full speed', () => {
+    // A guard-inclusive run so the scale actually matters.
+    const guardRoutes = (guardsData as GuardsData).guards;
+    const baseEnv: HuntEnvironment = {
+      level,
+      lightGrid,
+      wallBounds: extruded.wallBounds,
+      routes: guardRoutes.map((g) => g.route),
+      guardRoutes,
+      staffRoutes: [],
+    };
+    const assistEnv: HuntEnvironment = { ...baseEnv, guardSpeedScale: 0.9 };
+    const start: HuntState = {
+      ...missionStart(),
+      guards: guardRoutes.map(createGuardState),
+    };
+    const log = (() => {
+      const r = new InputRecorder('ASSIST-SEED', STEP_SECONDS, start.player);
+      for (let i = 0; i < 240; i++) r.record(i, intent(0, -1, 'walk'), null, false);
+      return r.toLog();
+    })();
+
+    const assistA = replayHunt(log, start, assistEnv);
+    const assistB = replayHunt(log, start, assistEnv);
+    expect(assistA).toEqual(assistB); // deterministic under assist
+    const fullSpeed = replayHunt(log, start, baseEnv);
+    expect(assistA.guards).not.toEqual(fullSpeed.guards); // and genuinely slower guards
+  });
+
   it('a detain through the fold restarts at the checkpoint, preserving the plant and alert while incrementing detains', () => {
     // Player standing on the checkpoint with a guard already in contact range,
     // the device planted and the building in lockdown — one tick emits a detain
     // and the deterministic restart fires.
-    const checkpoint = { x: 32.5, z: 3.5 };
-    const guard: GuardState = { ...createGuardState((guardsData as GuardsData).guards[0]), x: checkpoint.x, z: checkpoint.z };
+    const checkpoint = MISSION.postPlantCheckpoint;
+    const guard: GuardState = {
+      ...createGuardState((guardsData as GuardsData).guards[0]),
+      x: checkpoint.x,
+      z: checkpoint.z,
+      state: 'alert',
+      suspicion: 100,
+    };
     const detainEnv: HuntEnvironment = {
       level,
       lightGrid,
@@ -329,10 +398,10 @@ describe('replay determinism over a full mission (Phase 4)', () => {
     };
 
     const after = stepHunt(state, intent(0, 0, 'idle'), null, false, detainEnv, STEP_SECONDS, STEP_SECONDS * 1000);
-    expect(after.events.some((e) => e.type === 'detain')).toBe(true);
+    expect(after.events.find((event) => event.type === 'detain')).toMatchObject({ cause: 'chase' });
     expect(after.state.mission.detains).toBe(1); // incremented
     expect(after.state.mission.plantedAtMs).toBe(8000); // plant preserved
     expect(after.state.alertLevel.level).toBe(2); // alert preserved
-    expect(after.state.player).toEqual({ x: checkpoint.x, z: checkpoint.z, facingYaw: 0 }); // back at the checkpoint
+    expect(after.state.player).toEqual({ ...MISSION.postPlantCheckpoint, facingYaw: 0 }); // back at the configured checkpoint
   });
 });

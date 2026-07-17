@@ -78,9 +78,28 @@ export const RENDER_LIGHTING = {
   },
 } as const;
 
+/**
+ * The Phase 6 visibility-floor SETTING: overrides the curve's darkness
+ * minimum at runtime (null = the shipped default above). The level visual
+ * is re-extruded after a change so the whole scene repaints through the
+ * adjusted curve. Kept out of RENDER_LIGHTING so the const stays the
+ * documented default.
+ */
+let gridMinOverride: number | null = null;
+
+export function setGridMinOverride(min: number | null): void {
+  gridMinOverride = min;
+}
+
 /** The monotone grid-value -> rendered-brightness curve. Exported for the Extruder and its agreement tests. */
 export function gridBrightness(value: number): number {
-  const { min, max, gamma } = RENDER_LIGHTING.grid;
+  const { max, gamma } = RENDER_LIGHTING.grid;
+  const min = gridMinOverride ?? RENDER_LIGHTING.grid.min;
   const clamped = Math.max(0, Math.min(1, value));
   return min + (max - min) * Math.pow(clamped, gamma);
+}
+
+/** Keeps high-DPI displays sharp without asking the GPU to render wasteful 3x or 4x framebuffers. */
+export function boundedDevicePixelRatio(value: number): number {
+  return Number.isFinite(value) && value > 0 ? Math.min(value, 2) : 1;
 }
