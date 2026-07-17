@@ -1,7 +1,7 @@
 import type { MovementIntent } from '../input/InputState';
 import { EngagementInputSession } from '../sim/InputLog';
 import type { PlayerState } from '../sim/PlayerState';
-import { Telemetry } from '../telemetry/Telemetry';
+import { Telemetry, type TelemetryDoorDefinition } from '../telemetry/Telemetry';
 
 export type AppState = 'kiosk' | 'running' | 'paused';
 
@@ -42,7 +42,11 @@ export class EngagementLifecycle {
     return this.hasShownReport;
   }
 
-  beginEngagement(startState: PlayerState, guardCount: number): EngagementRunReset {
+  beginEngagement(
+    startState: PlayerState,
+    guardCount: number,
+    doors: readonly TelemetryDoorDefinition[] = [],
+  ): EngagementRunReset {
     this.inputSession.reset(startState);
     this.currentAppState = 'running';
     this.hasShownReport = false;
@@ -52,7 +56,7 @@ export class EngagementLifecycle {
       pointerWorld: { x: startState.x, z: startState.z },
       mouseHeld: false,
       previousThrowHeld: false,
-      telemetry: new Telemetry(),
+      telemetry: new Telemetry(doors),
       previousDoorId: null,
       playerStepTimerMs: 0,
       guardStepTimersMs: Array.from({ length: guardCount }, () => 0),

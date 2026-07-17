@@ -43,6 +43,9 @@ export const MISSION = {
   /** The primary. On the north rack bank (32,2); the player stands on the open floor at (32,3) to reach it. */
   plant: { id: 'device', x: 32.5, z: 2.5, label: 'Rogue device on the server rack' },
 
+  /** Safe corridor recovery point after planting, outside plant range and off every configured guard waypoint. */
+  postPlantCheckpoint: { x: 31.5, z: 9.5 },
+
   /** The two photo secondaries. Each completed photo is a bonus finding in the report. */
   photos: [
     { id: 'corner-office', x: 27.5, z: 17.5, label: 'Executive corner-office workstation' },

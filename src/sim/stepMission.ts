@@ -4,6 +4,7 @@ import { canSeePoint } from '../systems/Vision';
 import { createGuardState, type GuardRoute, type GuardState } from '../entities/GuardState';
 import { createStaffState, type StaffRoute, type StaffState } from '../entities/StaffState';
 import { createDoorState } from '../systems/DoorState';
+import { selectMissionInteractionTarget } from './MissionInteraction';
 import type { GuardEvent } from '../entities/GuardStateMachine';
 import type { MissionState } from './MissionState';
 import type { PlayerState } from './PlayerState';
@@ -27,13 +28,6 @@ export interface StepMissionContext {
   /** True if a bolt was appended this tick (for the bolts-thrown finding). */
   boltThrownThisTick: boolean;
   events: readonly GuardEvent[];
-}
-
-interface ObjectivePoint {
-  id: string;
-  x: number;
-  z: number;
-  holdMs: number;
 }
 
 /**
@@ -100,7 +94,7 @@ export function stepMission(mission: MissionState, player: PlayerState, intent: 
 
 /** Advance, complete, or cancel the current interact hold per Tailgate's rule (move/seen/bump interrupts, progress never banks). */
 function stepInteractHold(mission: MissionState, player: PlayerState, intent: MovementIntent, ctx: StepMissionContext): MissionState {
-  const target = nearestIncompleteObjective(mission, player);
+  const target = selectMissionInteractionTarget(mission, player);
 
   const moving = intent.speed !== 'idle';
   const seen = anyGuardSees(ctx.guards, ctx.level, ctx.doorOverrides, player);
@@ -124,37 +118,13 @@ function stepInteractHold(mission: MissionState, player: PlayerState, intent: Mo
 
   // Completed this objective.
   const done: MissionState = { ...mission, holdObjectiveId: null, holdProgressMs: 0 };
-  if (target.id === MISSION.plant.id) {
+  if (target.kind === 'plant') {
     done.plantedAtMs = ctx.simTimeMs;
-    done.checkpoint = { x: player.x, z: player.z }; // the second checkpoint, immediately after planting
+    done.checkpoint = { ...MISSION.postPlantCheckpoint };
   } else {
     done.photos = { ...mission.photos, [target.id]: ctx.simTimeMs };
   }
   return done;
-}
-
-/** The nearest not-yet-done objective within interact range, or null. */
-function nearestIncompleteObjective(mission: MissionState, player: PlayerState): ObjectivePoint | null {
-  const candidates: ObjectivePoint[] = [];
-  if (mission.plantedAtMs === null) {
-    candidates.push({ id: MISSION.plant.id, x: MISSION.plant.x, z: MISSION.plant.z, holdMs: MISSION.plantHoldMs });
-  }
-  for (const photo of MISSION.photos) {
-    if (mission.photos[photo.id] === null) {
-      candidates.push({ id: photo.id, x: photo.x, z: photo.z, holdMs: MISSION.photoHoldMs });
-    }
-  }
-
-  let best: ObjectivePoint | null = null;
-  let bestDist: number = MISSION.interactRangeMetres;
-  for (const c of candidates) {
-    const dist = Math.hypot(player.x - c.x, player.z - c.z);
-    if (dist <= bestDist) {
-      bestDist = dist;
-      best = c;
-    }
-  }
-  return best;
 }
 
 function anyGuardSees(guards: readonly GuardState[], level: ParsedLevel, doorOverrides: DoorOpenLookup, player: PlayerState): boolean {

@@ -370,8 +370,14 @@ describe('replay determinism over a full mission (Phase 4)', () => {
     // Player standing on the checkpoint with a guard already in contact range,
     // the device planted and the building in lockdown — one tick emits a detain
     // and the deterministic restart fires.
-    const checkpoint = { x: 32.5, z: 3.5 };
-    const guard: GuardState = { ...createGuardState((guardsData as GuardsData).guards[0]), x: checkpoint.x, z: checkpoint.z };
+    const checkpoint = MISSION.postPlantCheckpoint;
+    const guard: GuardState = {
+      ...createGuardState((guardsData as GuardsData).guards[0]),
+      x: checkpoint.x,
+      z: checkpoint.z,
+      state: 'alert',
+      suspicion: 100,
+    };
     const detainEnv: HuntEnvironment = {
       level,
       lightGrid,
@@ -392,10 +398,10 @@ describe('replay determinism over a full mission (Phase 4)', () => {
     };
 
     const after = stepHunt(state, intent(0, 0, 'idle'), null, false, detainEnv, STEP_SECONDS, STEP_SECONDS * 1000);
-    expect(after.events.some((e) => e.type === 'detain')).toBe(true);
+    expect(after.events.find((event) => event.type === 'detain')).toMatchObject({ cause: 'chase' });
     expect(after.state.mission.detains).toBe(1); // incremented
     expect(after.state.mission.plantedAtMs).toBe(8000); // plant preserved
     expect(after.state.alertLevel.level).toBe(2); // alert preserved
-    expect(after.state.player).toEqual({ x: checkpoint.x, z: checkpoint.z, facingYaw: 0 }); // back at the checkpoint
+    expect(after.state.player).toEqual({ ...MISSION.postPlantCheckpoint, facingYaw: 0 }); // back at the configured checkpoint
   });
 });

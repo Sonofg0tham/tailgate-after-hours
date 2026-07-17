@@ -22,6 +22,25 @@ describe('threat telegraph geometry', () => {
     expect(mesh.geometry.getAttribute('normal')).toBeUndefined();
   });
 
+  it('holds the searching-beam intensity steady under reduced motion', () => {
+    const beam = new TorchBeam();
+    const mesh = beam.group.children[0] as THREE.Mesh<THREE.BufferGeometry, THREE.MeshBasicMaterial>;
+    const light = beam.group.children.find((child): child is THREE.SpotLight => child instanceof THREE.SpotLight);
+    expect(light).toBeDefined();
+
+    beam.update(level, 5, 5, 0, 8, 70, 'flicker', 0, 'reduced');
+    const reducedOpacity = mesh.material.opacity;
+    const reducedIntensity = light!.intensity;
+    beam.update(level, 5, 5, 0, 8, 70, 'flicker', Math.PI / 2, 'reduced');
+    expect(mesh.material.opacity).toBe(reducedOpacity);
+    expect(light!.intensity).toBe(reducedIntensity);
+
+    beam.update(level, 5, 5, 0, 8, 70, 'flicker', 0, 'full');
+    const fullOpacity = mesh.material.opacity;
+    beam.update(level, 5, 5, 0, 8, 70, 'flicker', Math.PI / 2, 'full');
+    expect(mesh.material.opacity).not.toBe(fullOpacity);
+  });
+
   it('reuses the debug cone buffer and leaves it untouched while hidden', () => {
     const cone = new DebugVisionCone();
     cone.mesh.visible = true;

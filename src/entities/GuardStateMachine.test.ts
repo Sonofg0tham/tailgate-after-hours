@@ -18,7 +18,7 @@ const LEVEL_DATA: LevelData = {
   width: 20,
   height: 20,
   legend: { '#': { kind: 'wall' }, '.': { kind: 'floor', zone: 'room' } },
-  zones: { room: { label: 'Room', surface: 'concrete', tint: '#000' } },
+  zones: { room: { label: 'Room', surface: 'concrete', tint: '#000', visualProfile: 'service' } },
   layout: Array.from({ length: 20 }, (_, y) =>
     y === 0 || y === 19 ? '#'.repeat(20) : '#' + '.'.repeat(18) + '#',
   ),
@@ -157,11 +157,27 @@ describe('ALERT', () => {
     expect(after.state).toBe('searching');
   });
 
-  it('emits a detain event on contact', () => {
-    const guard = freshGuard();
+  it('attributes contact by an already-alert guard to the chase', () => {
+    const guard: GuardState = { ...freshGuard(), state: 'alert', suspicion: 100 };
     const ctx = baseContext({ player: { x: guard.x, z: guard.z, facingYaw: 0 } }); // same cell
     const { events } = run(guard, ctx, 1);
-    expect(events.some((e) => e.type === 'detain')).toBe(true);
+    expect(events.find((event) => event.type === 'detain')).toMatchObject({ cause: 'chase' });
+  });
+});
+
+describe('detention causes', () => {
+  it('attributes visible contact by a non-alert guard to seen contact', () => {
+    const guard = { ...freshGuard(), facingYaw: 0 };
+    const ctx = baseContext({ player: { x: guard.x, z: guard.z + 0.5, facingYaw: 0 } });
+    const { events } = run(guard, ctx, 1);
+    expect(events.find((event) => event.type === 'detain')).toMatchObject({ cause: 'seen-contact' });
+  });
+
+  it('attributes unseen contact by a non-alert guard to guard contact', () => {
+    const guard = { ...freshGuard(), facingYaw: 0 };
+    const ctx = baseContext({ player: { x: guard.x, z: guard.z - 0.5, facingYaw: 0 } });
+    const { events } = run(guard, ctx, 1);
+    expect(events.find((event) => event.type === 'detain')).toMatchObject({ cause: 'guard-contact' });
   });
 });
 
@@ -220,7 +236,7 @@ describe('tailgate witness', () => {
     ...LEVEL_DATA,
     legend: { ...LEVEL_DATA.legend, '+': { kind: 'door', zone: 'room', open: true } },
     layout: LEVEL_DATA.layout.map((row, y) => (y === 9 ? row.slice(0, 10) + '+' + row.slice(11) : row)),
-    doors: [{ x: 10, y: 9, id: 'test-lobby', kind: 'badge' }],
+    doors: [{ x: 10, y: 9, id: 'test-lobby', kind: 'badge', displayName: 'TEST ACCESS' }],
   });
 
   it('a guard who sees the player standing in an OPEN badge door goes curious and emits tailgateWitnessed', () => {
@@ -255,6 +271,23 @@ describe('tailgate witness', () => {
     });
     const { guard: after } = run(guard, ctx, 1);
     expect(after.state).toBe('patrol');
+  });
+});
+
+describe('read-only sight observation', () => {
+  it('returns the direct sight result already used by suspicion', () => {
+    const guard = { ...freshGuard(), facingYaw: 0 };
+    const visible = stepGuard(
+      guard,
+      baseContext({ player: { x: guard.x, z: guard.z + 2, facingYaw: 0 } }),
+    );
+    const hidden = stepGuard(
+      guard,
+      baseContext({ player: { x: guard.x, z: guard.z - 2, facingYaw: 0 } }),
+    );
+
+    expect(visible.observation.canSeePlayer).toBe(true);
+    expect(hidden.observation.canSeePlayer).toBe(false);
   });
 });
 

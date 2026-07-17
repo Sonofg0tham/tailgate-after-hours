@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { stepMission, restartAtCheckpoint, type StepMissionContext } from './stepMission';
 import { createMissionState, type MissionState } from './MissionState';
 import { MISSION } from '../config/mission';
-import { parseLevel, type LevelData } from '../world/level';
+import { isSolid, parseLevel, type LevelData } from '../world/level';
 import { createGuardState, type GuardsData, type GuardState } from '../entities/GuardState';
 import { createStaffState, type StaffData, type StaffState } from '../entities/StaffState';
 import { createDoorState } from '../systems/DoorState';
@@ -55,7 +55,7 @@ describe('the plant hold', () => {
     const after = drive(createMissionState(), AT_PLANT, IDLE, { interactHeld: true }, ticks);
     expect(after.plantedAtMs).not.toBeNull();
     expect(after.phase).toBe('infiltrating'); // plant point is far from exfil
-    expect(after.checkpoint).toEqual({ x: AT_PLANT.x, z: AT_PLANT.z }); // second checkpoint, at the plant
+    expect(after.checkpoint).toEqual(MISSION.postPlantCheckpoint);
   });
 
   it('does not complete before the full 3 seconds', () => {
@@ -70,6 +70,27 @@ describe('the plant hold', () => {
     const after = drive(createMissionState(), farAway, IDLE, { interactHeld: true }, 60);
     expect(after.holdProgressMs).toBe(0);
     expect(after.plantedAtMs).toBeNull();
+  });
+});
+
+describe('the post-plant checkpoint', () => {
+  it('is the configured open corridor cell, outside plant range and away from guard waypoints', () => {
+    const checkpoint = MISSION.postPlantCheckpoint;
+    expect(checkpoint).toEqual({ x: 31.5, z: 9.5 });
+
+    const cell = {
+      x: Math.floor(checkpoint.x / level.cellSize),
+      y: Math.floor(checkpoint.z / level.cellSize),
+    };
+    expect(isSolid(level, cell.x, cell.y)).toBe(false);
+    expect(Math.hypot(checkpoint.x - MISSION.plant.x, checkpoint.z - MISSION.plant.z)).toBeGreaterThan(
+      MISSION.interactRangeMetres,
+    );
+    expect(
+      (guardsData as GuardsData).guards.some((guard) =>
+        guard.route.some((waypoint) => waypoint.x === cell.x && waypoint.y === cell.y),
+      ),
+    ).toBe(false);
   });
 });
 
@@ -206,18 +227,32 @@ describe('restartAtCheckpoint', () => {
   }
 
   it('returns the player to the checkpoint, preserving alert, clock, and mission facts, and increments detains', () => {
-    const mission: MissionState = { ...createMissionState(), plantedAtMs: 8000, checkpoint: { x: 32.5, z: 3.5 }, detains: 0, maxAlertLevel: 2 };
-    const restarted = restartAtCheckpoint(huntStateWith(mission), env);
+    const initial = createMissionState();
+    const mission: MissionState = {
+      ...initial,
+      holdObjectiveId: MISSION.photos[1].id,
+      holdProgressMs: 500,
+      plantedAtMs: 8000,
+      photos: { ...initial.photos, [MISSION.photos[0].id]: 12_000 },
+      checkpoint: { ...MISSION.postPlantCheckpoint },
+      enteredFloorAtMs: 3000,
+      detains: 2,
+      everSpotted: true,
+      maxAlertLevel: 2,
+      boltsThrown: 1,
+      ingressRoute: 'lift',
+      ingressAtMs: 1000,
+    };
+    const before = huntStateWith(mission);
+    const restarted = restartAtCheckpoint(before, env);
 
-    expect(restarted.player).toEqual({ x: 32.5, z: 3.5, facingYaw: 0 });
-    expect(restarted.alertLevel).toEqual({ level: 2, msSinceIncident: 0 }); // preserved
+    expect(restarted.player).toEqual({ ...MISSION.postPlantCheckpoint, facingYaw: 0 });
+    expect(restarted.alertLevel).toBe(before.alertLevel);
+    expect(restarted.alertLevel).toEqual({ level: 2, msSinceIncident: 0 });
     expect(restarted.simTimeMs).toBe(45000); // clock keeps running
-    expect(restarted.mission.plantedAtMs).toBe(8000); // plant preserved
-    expect(restarted.mission.detains).toBe(1); // incremented
+    expect(restarted.mission).toEqual({ ...mission, holdObjectiveId: null, holdProgressMs: 0, detains: 3 });
     expect(restarted.bolts).toEqual([]);
-    // Guards reset to their patrol start (not the alert positions we forced).
-    expect(restarted.guards[0].state).toBe('patrol');
-    expect(restarted.guards[0].x).not.toBe(99);
+    expect(restarted.guards).toEqual(guardRoutes.map(createGuardState));
   });
 
   it('restarts at the lift-lobby spawn when no checkpoint has been reached yet', () => {

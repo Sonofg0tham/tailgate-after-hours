@@ -5,6 +5,20 @@ import { gridBrightness, RENDER_LIGHTING } from '../config/renderLighting';
 import { buildLightGrid } from '../systems/LightModel';
 import { parseLevel, type LevelData } from '../world/level';
 import floor12 from '../data/floor12.json';
+import { DOOR_LABEL_LAYOUT, doorLabelFaceTransforms } from '../entities/DoorPanel';
+
+interface DoorFrameModule {
+  DOOR_FRAME_LAYOUT?: {
+    slabWidthCells: number;
+    postThicknessCells: number;
+  };
+  doorFramePostOffsets?: (opensEastWest: boolean, cellSize: number) => readonly (readonly [number, number])[];
+}
+
+async function loadDoorFrameModule(): Promise<DoorFrameModule> {
+  const modulePath = './Extruder';
+  return import(/* @vite-ignore */ modulePath) as Promise<DoorFrameModule>;
+}
 
 // The render-agrees-with-grid invariant, as tests: floor and wall vertex
 // colours must be exactly the sim's light grid through the (monotone)
@@ -115,5 +129,95 @@ describe('extruded level resource ownership', () => {
 
     expect(geometryDisposals).toBe(geometries.size);
     expect(materialDisposals).toBe(materials.size);
+  });
+});
+
+describe('dynamic door frame geometry', () => {
+  it('flanks both slab orientations without crossing either depth-tested label face', async () => {
+    const module = await loadDoorFrameModule();
+    expect(module.DOOR_FRAME_LAYOUT).toBeDefined();
+    expect(typeof module.doorFramePostOffsets).toBe('function');
+    if (!module.DOOR_FRAME_LAYOUT || !module.doorFramePostOffsets) return;
+
+    const frame = module.DOOR_FRAME_LAYOUT;
+    expect(frame.slabWidthCells).toBe(DOOR_LABEL_LAYOUT.slabWidthCells);
+    expect(frame.postThicknessCells).toBeLessThanOrEqual(
+      DOOR_LABEL_LAYOUT.slabWidthCells - DOOR_LABEL_LAYOUT.widthCells,
+    );
+
+    const edgeCentre = ((frame.slabWidthCells + frame.postThicknessCells) * level.cellSize) / 2;
+    expect(module.doorFramePostOffsets(false, level.cellSize)).toEqual([
+      [-edgeCentre, 0],
+      [edgeCentre, 0],
+    ]);
+    expect(module.doorFramePostOffsets(true, level.cellSize)).toEqual([
+      [0, -edgeCentre],
+      [0, edgeCentre],
+    ]);
+
+    const rendered = extrudeLevel(level, grid);
+    try {
+      const postHalf = (frame.postThicknessCells * level.cellSize) / 2;
+      const slabHalf = (frame.slabWidthCells * level.cellSize) / 2;
+      const labelHalf = (DOOR_LABEL_LAYOUT.widthCells * level.cellSize) / 2;
+
+      for (const door of level.doors) {
+        const opensEastWest =
+          level.cells[door.y - 1]?.[door.x]?.kind === 'wall' &&
+          level.cells[door.y + 1]?.[door.x]?.kind === 'wall';
+        const centreX = (door.x + 0.5) * level.cellSize;
+        const centreZ = (door.y + 0.5) * level.cellSize;
+        const posts: THREE.Mesh[] = [];
+        rendered.group.traverse((object) => {
+          if (object instanceof THREE.Mesh && object.name === `door-frame:${door.x},${door.y}`) {
+            posts.push(object);
+          }
+        });
+        expect(posts, door.displayName).toHaveLength(2);
+
+        const expectedOffsets = module.doorFramePostOffsets(opensEastWest, level.cellSize);
+        const actualOffsets = posts.map((post) => [post.position.x - centreX, post.position.z - centreZ] as const);
+        for (const [index, [dx, dz]] of actualOffsets.entries()) {
+          expect(dx).toBeCloseTo(expectedOffsets[index][0]);
+          expect(dz).toBeCloseTo(expectedOffsets[index][1]);
+        }
+
+        for (const [dx, dz] of actualOffsets) {
+          const edgeAxis = Math.abs(opensEastWest ? dz : dx);
+          const normalAxis = Math.abs(opensEastWest ? dx : dz);
+          expect(edgeAxis - postHalf).toBeCloseTo(slabHalf);
+          expect(edgeAxis - postHalf).toBeGreaterThan(labelHalf);
+          expect(normalAxis).toBeCloseTo(0);
+        }
+
+        for (const face of doorLabelFaceTransforms(opensEastWest)) {
+          const faceNormal = Math.abs(opensEastWest ? face.x : face.z);
+          expect(faceNormal).toBeGreaterThan(postHalf);
+        }
+      }
+
+      const nonDoorCollisionBounds =
+        level.cells.flat().filter((cell) => cell.kind === 'wall').length + level.furniture.length;
+      expect(rendered.wallBounds).toHaveLength(nonDoorCollisionBounds);
+    } finally {
+      rendered.dispose();
+    }
+  });
+});
+
+describe('production debug boundary', () => {
+  it('does not allocate or activate grid and surface debug visuals when disabled', () => {
+    const production = extrudeLevel(level, grid, { debugVisuals: false });
+    let lineSegments = 0;
+    production.group.traverse((object) => {
+      if (object instanceof THREE.LineSegments) lineSegments += 1;
+    });
+    const visibilityBefore = production.group.children.map((child) => child.visible);
+
+    production.setGridOverlay(true);
+    production.setSurfaceTintDebug(true);
+
+    expect(lineSegments).toBe(0);
+    expect(production.group.children.map((child) => child.visible)).toEqual(visibilityBefore);
   });
 });
