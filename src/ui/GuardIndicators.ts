@@ -47,17 +47,17 @@ export function projectGuardIndicator(input: GuardIndicatorProjectionInput): Gua
     return null;
   }
 
-  let directionX = input.behindCamera ? -ndcX : ndcX;
-  let directionY = input.behindCamera ? ndcY : -ndcY;
+  const width = Math.max(1, input.viewportWidth);
+  const height = Math.max(1, input.viewportHeight);
+  const centreX = width / 2;
+  const centreY = height / 2;
+  let directionX = (input.behindCamera ? -ndcX : ndcX) * centreX;
+  let directionY = (input.behindCamera ? ndcY : -ndcY) * centreY;
   if (Math.hypot(directionX, directionY) < Number.EPSILON) {
     directionX = 0;
     directionY = -1;
   }
 
-  const width = Math.max(1, input.viewportWidth);
-  const height = Math.max(1, input.viewportHeight);
-  const centreX = width / 2;
-  const centreY = height / 2;
   const halfSafeWidth = Math.max(0, centreX - Math.max(0, input.safeInsetX));
   const halfSafeHeight = Math.max(0, centreY - Math.max(0, input.safeInsetY));
   const xScale = directionX === 0 ? Infinity : halfSafeWidth / Math.abs(directionX);

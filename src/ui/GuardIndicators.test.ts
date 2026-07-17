@@ -123,6 +123,30 @@ describe('projectGuardIndicator', () => {
     expect(module.projectGuardIndicator(projection(point))).toMatchObject(expected);
   });
 
+  it('uses CSS pixel-space direction for a diagonal guard on a widescreen viewport', async () => {
+    const module = await loadIndicators();
+    expect(typeof module?.projectGuardIndicator).toBe('function');
+    if (!module?.projectGuardIndicator) return;
+
+    const model = module.projectGuardIndicator(projection({ ndcX: 2, ndcY: 2 }));
+
+    expect(model?.xPx).toBeCloseTo(916.67, 2);
+    expect(model?.yPx).toBe(50);
+    expect(model?.angleDegrees).toBeCloseTo(-30.96, 2);
+  });
+
+  it('uses CSS pixel-space direction when reversing a diagonal guard behind the camera', async () => {
+    const module = await loadIndicators();
+    expect(typeof module?.projectGuardIndicator).toBe('function');
+    if (!module?.projectGuardIndicator) return;
+
+    const model = module.projectGuardIndicator(projection({ ndcX: 2, ndcY: 2, behindCamera: true }));
+
+    expect(model?.xPx).toBeCloseTo(83.33, 2);
+    expect(model?.yPx).toBe(550);
+    expect(model?.angleDegrees).toBeCloseTo(149.04, 2);
+  });
+
   it('reverses behind-camera direction instead of pointing at the mirrored projection', async () => {
     const module = await loadIndicators();
     expect(typeof module?.projectGuardIndicator).toBe('function');
