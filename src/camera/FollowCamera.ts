@@ -46,7 +46,7 @@ export class FollowCamera {
   readonly camera: THREE.PerspectiveCamera;
 
   private readonly tiltRadians = THREE.MathUtils.degToRad(MOVEMENT.camera.tiltDegrees);
-  private distance = (MOVEMENT.camera.minDistance + MOVEMENT.camera.maxDistance) / 2;
+  private distanceMetres: number = MOVEMENT.camera.defaultDistance;
   private readonly anchor = new THREE.Vector2();
   private readonly lookAheadOffset = new THREE.Vector2();
   private initialised = false;
@@ -57,14 +57,22 @@ export class FollowCamera {
     window.addEventListener(
       'wheel',
       (event) => {
-        this.distance = THREE.MathUtils.clamp(
-          this.distance + event.deltaY * 0.01,
-          MOVEMENT.camera.minDistance,
-          MOVEMENT.camera.maxDistance,
-        );
+        this.setDistance(this.distanceMetres + event.deltaY * 0.01);
       },
       { passive: true },
     );
+  }
+
+  /** Current follow distance in metres. Mutations go through setDistance. */
+  get distance(): number {
+    return this.distanceMetres;
+  }
+
+  /** Applies a live camera-distance setting without changing any other feel value. */
+  setDistance(distanceMetres: number): void {
+    this.distanceMetres = Number.isFinite(distanceMetres)
+      ? THREE.MathUtils.clamp(distanceMetres, MOVEMENT.camera.minDistance, MOVEMENT.camera.maxDistance)
+      : MOVEMENT.camera.defaultDistance;
   }
 
   setAspect(aspect: number): void {
@@ -102,8 +110,8 @@ export class FollowCamera {
     const framingX = this.anchor.x + this.lookAheadOffset.x;
     const framingZ = this.anchor.y + this.lookAheadOffset.y;
 
-    const offsetZ = Math.cos(this.tiltRadians) * this.distance;
-    const offsetY = Math.sin(this.tiltRadians) * this.distance;
+    const offsetZ = Math.cos(this.tiltRadians) * this.distanceMetres;
+    const offsetY = Math.sin(this.tiltRadians) * this.distanceMetres;
     this.camera.position.set(framingX, offsetY, framingZ + offsetZ);
     this.camera.lookAt(framingX, 1, framingZ);
   }

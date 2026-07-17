@@ -671,6 +671,7 @@ async function main(): Promise<void> {
     settings = next;
     saveSettings(settings);
     audio.setMasterVolume(settings.masterVolume);
+    followCamera.setDistance(settings.cameraDistance);
     setMotionLevel(settings.motionLevel);
     shakeIntensityLive = settings.shakeIntensity;
     document.documentElement.style.setProperty('--hud-scale', String(settings.hudScale));
