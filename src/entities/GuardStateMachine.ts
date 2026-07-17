@@ -85,7 +85,19 @@ interface Sight {
   playerLightLevel: number;
 }
 
-export function stepGuard(guard: GuardState, ctx: StepGuardContext): { guard: GuardState; events: GuardEvent[] } {
+export interface GuardObservation {
+  /** The same direct sight result used by suspicion and tailgate witnessing this tick. */
+  canSeePlayer: boolean;
+}
+
+export interface StepGuardResult {
+  guard: GuardState;
+  events: GuardEvent[];
+  /** Read-only presentation data. It does not feed back into guard state or events. */
+  observation: GuardObservation;
+}
+
+export function stepGuard(guard: GuardState, ctx: StepGuardContext): StepGuardResult {
   const distanceMetres = Math.hypot(ctx.player.x - guard.x, ctx.player.z - guard.z);
   const canSee = canSeePoint(
     ctx.level,
@@ -132,7 +144,11 @@ export function stepGuard(guard: GuardState, ctx: StepGuardContext): { guard: Gu
   }
 
   const result = dispatch(workingGuard, ctx, newSuspicion, sight);
-  return { guard: result.guard, events: [...events, ...result.events] };
+  return {
+    guard: result.guard,
+    events: [...events, ...result.events],
+    observation: { canSeePlayer: sight.canSee },
+  };
 }
 
 /** True if the player is standing in a badge door's cell AND that door currently reads open — the "witnessed tailgate" trigger. */

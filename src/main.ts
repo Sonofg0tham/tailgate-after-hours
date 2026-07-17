@@ -387,7 +387,7 @@ async function main(): Promise<void> {
   if (import.meta.env.DEV) {
     fps = new FpsMeter();
   }
-  let telemetry = new Telemetry(); // reassigned on [ NEW ENGAGEMENT ]
+  let telemetry = new Telemetry(level.doors); // reassigned on [ NEW ENGAGEMENT ]
   const clock = new THREE.Clock();
   const reportView = new ReportView();
 
@@ -548,7 +548,7 @@ async function main(): Promise<void> {
     reportView.hide();
     huntEnv.guardSpeedScale = settings.assistMode ? 0.9 : 1;
     huntState = freshHuntState();
-    const reset = lifecycle.beginEngagement(huntState.player, huntState.guards.length);
+    const reset = lifecycle.beginEngagement(huntState.player, huntState.guards.length, level.doors);
     lastIntent = reset.lastIntent;
     pointerWorld = reset.pointerWorld;
     mouseHeld = reset.mouseHeld;
@@ -877,7 +877,7 @@ async function main(): Promise<void> {
     prevDoorId = currentDoorId;
 
     const playerLight = lightLevelAtWorld(lightGrid, level.cellSize, huntState.player.x, huntState.player.z);
-    telemetry.recordTick(deltaSeconds, playerLight);
+    telemetry.recordTick(deltaSeconds, playerLight, result.observation);
     telemetry.recordEvents(result.events);
 
     if (detainedFlashRemainingMs === 0 && detainEvent) {

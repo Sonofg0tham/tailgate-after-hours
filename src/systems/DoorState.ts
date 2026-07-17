@@ -2,12 +2,19 @@ import { DOORS } from '../config/doors';
 import type { WallBounds } from '../physics/CapsuleCollider';
 import type { DoorKindDef, DoorOpenLookup, ParsedLevel } from '../world/level';
 import type { StaffRoute, StaffState } from '../entities/StaffState';
+import type { MovementIntent } from '../input/InputState';
+import type { PlayerState } from '../sim/PlayerState';
 
 export interface DoorRuntimeState {
   id: string;
   kind: DoorKindDef['kind'];
   /** ms; only meaningful for 'badge' doors — the moment the tailgate window closes. 0 = never badged, reads closed. */
   tailgateCloseAt: number;
+}
+
+export interface ClosedDoorWaitTarget {
+  doorId: string;
+  displayName: string;
 }
 
 export function createDoorState<T extends Pick<DoorKindDef, 'id' | 'kind'>>(def: T): DoorRuntimeState {
@@ -103,6 +110,40 @@ export function closedDoorWallBounds(
     });
   }
   return bounds;
+}
+
+/**
+ * Selects the nearest closed dynamic door for wait telemetry. A tick is
+ * eligible only while the player has a real movement intent and their
+ * post-collision centre is within one level cell size of the door centre.
+ * The radius is measurement-only and does not affect collision or schedules.
+ */
+export function selectClosedDoorWaitTarget(
+  level: ParsedLevel,
+  doorOverrides: DoorOpenLookup,
+  player: Pick<PlayerState, 'x' | 'z'>,
+  intent: MovementIntent,
+): ClosedDoorWaitTarget | null {
+  const isMoving = intent.speed !== 'idle' && (intent.directionX !== 0 || intent.directionZ !== 0);
+  if (!isMoving) {
+    return null;
+  }
+
+  let nearest: ClosedDoorWaitTarget | null = null;
+  let nearestDistance = Infinity;
+  for (const door of level.doors) {
+    if (doorOverrides.get(`${door.x},${door.y}`) !== false) {
+      continue;
+    }
+    const centreX = (door.x + 0.5) * level.cellSize;
+    const centreZ = (door.y + 0.5) * level.cellSize;
+    const distance = Math.hypot(player.x - centreX, player.z - centreZ);
+    if (distance <= level.cellSize && distance < nearestDistance) {
+      nearest = { doorId: door.id, displayName: door.displayName };
+      nearestDistance = distance;
+    }
+  }
+  return nearest;
 }
 
 /**

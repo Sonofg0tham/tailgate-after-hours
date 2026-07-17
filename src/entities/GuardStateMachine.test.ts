@@ -274,6 +274,23 @@ describe('tailgate witness', () => {
   });
 });
 
+describe('read-only sight observation', () => {
+  it('returns the direct sight result already used by suspicion', () => {
+    const guard = { ...freshGuard(), facingYaw: 0 };
+    const visible = stepGuard(
+      guard,
+      baseContext({ player: { x: guard.x, z: guard.z + 2, facingYaw: 0 } }),
+    );
+    const hidden = stepGuard(
+      guard,
+      baseContext({ player: { x: guard.x, z: guard.z - 2, facingYaw: 0 } }),
+    );
+
+    expect(visible.observation.canSeePlayer).toBe(true);
+    expect(hidden.observation.canSeePlayer).toBe(false);
+  });
+});
+
 describe('determinism', () => {
   it('two runs of the same guard through the same context produce identical results', () => {
     const guard = freshGuard();
