@@ -216,6 +216,7 @@ async function main(): Promise<void> {
   const audio = new AudioEngine({
     isOccluded: (sourceX, sourceZ, listenerX, listenerZ) => !hasLineOfSight(level, listenerX, listenerZ, sourceX, sourceZ),
   });
+  window.addEventListener('pagehide', () => audio.dispose(), { once: true });
   window.addEventListener('keydown', () => audio.unlock());
   window.addEventListener('pointerdown', () => audio.unlock());
 

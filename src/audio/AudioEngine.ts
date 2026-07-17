@@ -294,6 +294,22 @@ export class AudioEngine {
     return this.userVolume;
   }
 
+  /** Releases continuous voices and the Web Audio graph on page teardown. */
+  dispose(): void {
+    this.tension?.dispose();
+    this.tension = null;
+    if (this.ctx) {
+      void this.ctx.close();
+    }
+    this.ctx = null;
+    this.master = null;
+    this.buses = null;
+    this.hvacBed = null;
+    this.emitters = [];
+    this.mutter = null;
+    this.nextChirpAtMs = null;
+  }
+
   /** Everything drops briefly (the detain dead-line moment), then recovers. */
   duck(amount: number, holdMs: number): void {
     if (!this.master || !this.ctx) {

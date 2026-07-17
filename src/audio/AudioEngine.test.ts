@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { AudioEngine, CUE_NAMES } from './AudioEngine';
 
 // jsdom has no AudioContext — which is exactly the contract under test: the
@@ -49,6 +49,22 @@ describe('AudioEngine before unlock', () => {
     const e = engine();
     expect(() => e.unlock()).not.toThrow();
     expect(() => e.play('sting')).not.toThrow(); // still no context, still safe
+  });
+
+  it('tears down the continuous layer and context exactly once', () => {
+    const e = engine();
+    const disposeTension = vi.fn();
+    const closeContext = vi.fn().mockResolvedValue(undefined);
+    Object.assign(e as unknown as Record<string, unknown>, {
+      tension: { dispose: disposeTension },
+      ctx: { close: closeContext },
+    });
+
+    e.dispose();
+    e.dispose();
+
+    expect(disposeTension).toHaveBeenCalledOnce();
+    expect(closeContext).toHaveBeenCalledOnce();
   });
 });
 
