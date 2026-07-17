@@ -12,6 +12,7 @@ import { loadCharacter, loadGuardCharacter, loadStaffCharacter } from './charact
 import { AnimationController } from './character/AnimationController';
 import { GuardAnimationController } from './character/GuardAnimationController';
 import { StaffAnimationController } from './character/StaffAnimationController';
+import { applyCleanerAppearance } from './character/CleanerAppearance';
 import { MovementController } from './input/MovementController';
 import { KeyboardState } from './input/KeyboardInput';
 import { ThrowInput } from './input/ThrowInput';
@@ -282,10 +283,23 @@ async function main(): Promise<void> {
 
   const staffEntities = staffData.staff.map((routeDef, i) => {
     const character = staffCharacters[i];
+    const appearance = applyCleanerAppearance(character.model);
     scene.add(character.model);
     enableCharacterShadows(character.model);
-    return { routeDef, model: character.model, animation: new StaffAnimationController(character.model, character.clips) };
+    return {
+      routeDef,
+      model: character.model,
+      animation: new StaffAnimationController(character.model, character.clips),
+      appearance,
+    };
   });
+  window.addEventListener(
+    'pagehide',
+    () => {
+      for (const staff of staffEntities) staff.appearance.dispose();
+    },
+    { once: true },
+  );
 
   const doorPanels = level.doors.map((def) => {
     const opensEastWest = isWall(level, def.x, def.y - 1) && isWall(level, def.x, def.y + 1);
